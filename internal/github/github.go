@@ -24,6 +24,7 @@ import (
 type Client struct {
 	DryRun bool   // when true, no real merge/comment/review happens
 	Repo   string // "owner/repo"; empty means infer from gh in cwd
+	Cwd    string // working directory for gh subprocesses; empty = current
 
 	// Optional logger for shelled commands (nil → discard).
 	Log io.Writer
@@ -62,6 +63,13 @@ func (c *Client) runGh(ctx context.Context, args []string, stdin string) ([]byte
 		fmt.Fprintln(c.Log, "$ gh", strings.Join(args, " "))
 	}
 	cmd := exec.CommandContext(ctx, "gh", args...)
+	if c.Cwd != "" {
+		// Critical for the "tool pointed at a foreign repo" case: without
+		// setting Dir, gh would auto-detect the repo from the launch CWD
+		// (e.g., the commons-tool checkout) instead of the corpus we're
+		// actually managing.
+		cmd.Dir = c.Cwd
+	}
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}

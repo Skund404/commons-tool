@@ -331,6 +331,10 @@ func runServer(args []string) int {
 	if tok, err := gh.TokenFromGh(); err == nil && tok != "" {
 		srv2.GitHub = gh.New("", !*commitMerge, gh.TokenFromGh)
 		srv2.GitHub.Log = os.Stderr
+		// Run gh from the corpus directory so PR list/diff/merge targets the
+		// repo we're managing (e.g. proto-commons) rather than the binary's
+		// build dir.
+		srv2.GitHub.Cwd = root
 	} else {
 		fmt.Fprintln(os.Stderr, "info: gh CLI unauthenticated; PR list will use fixtures only")
 	}
