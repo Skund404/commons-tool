@@ -345,6 +345,7 @@ func (s *Server) handlePRList(w http.ResponseWriter, r *http.Request) {
 			"files":      pr.Files,
 			"semantic":   pr.Semantic,
 			"recs":       recs,
+			"url":        "", // fixture — no real PR
 		})
 	}
 	// Merge in live gh PRs when configured. Each live PR gets the same
@@ -366,6 +367,7 @@ func (s *Server) handlePRList(w http.ResponseWriter, r *http.Request) {
 					"files":      b.Files,
 					"semantic":   b.Semantic,
 					"recs":       b.Recs,
+					"url":        lp.URL,
 				})
 			}
 		}
@@ -401,6 +403,7 @@ func (s *Server) handlePRDetail(w http.ResponseWriter, r *http.Request) {
 				"files":      pr.Files,
 				"semantic":   pr.Semantic,
 				"recs":       recs,
+				"url":        "",
 			})
 			return
 		}
@@ -422,6 +425,7 @@ func (s *Server) handlePRDetail(w http.ResponseWriter, r *http.Request) {
 				"files":      b.Files,
 				"semantic":   b.Semantic,
 				"recs":       b.Recs,
+				"url":        pr.URL,
 			})
 			return
 		}

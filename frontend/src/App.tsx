@@ -5,6 +5,7 @@ import { TitleBar } from "@/shell/title-bar";
 import { Sidebar } from "@/shell/sidebar";
 import { StatusBar } from "@/shell/status-bar";
 import { PaneSwitch, type PaneArgs } from "@/shell/pane-switch";
+import { GlobalSearchModal } from "@/shell/global-search";
 import { OnboardingWizard } from "@/onboarding/wizard";
 
 export default function App() {
@@ -19,6 +20,7 @@ function Shell() {
   const { tweaks } = useTweaks();
   const [pane, setPane] = useState<PaneId>("dashboard");
   const [paneState, setPaneState] = useState<Partial<Record<PaneId, PaneArgs>>>({});
+  const [searchOpen, setSearchOpen] = useState(false);
   const [onboarding, setOnboarding] = useState(() => {
     try {
       return !localStorage.getItem("cm.onboarded");
@@ -48,7 +50,8 @@ function Shell() {
     setOnboarding(false);
   };
 
-  // Hotkeys: ⌘1–9 / Ctrl+1–9 jump between panes; ⌘, opens Settings.
+  // Hotkeys: ⌘1–9 / Ctrl+1–9 jump between panes; ⌘, opens Settings;
+  // ⌘K opens the global search modal.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -56,10 +59,16 @@ function Shell() {
       if (idx >= 0 && NAV[idx]) {
         e.preventDefault();
         setPane(NAV[idx].id);
+        return;
       }
       if (e.key === ",") {
         e.preventDefault();
         setPane("settings");
+        return;
+      }
+      if (e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -82,7 +91,7 @@ function Shell() {
         overflow: "hidden",
       }}
     >
-      <TitleBar />
+      <TitleBar onOpenSearch={() => setSearchOpen(true)} />
       <div
         style={{
           flex: 1,
@@ -106,6 +115,11 @@ function Shell() {
       <StatusBar />
 
       <OnboardingWizard open={onboarding} onClose={closeOnboarding} />
+      <GlobalSearchModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        go={go}
+      />
       <TweaksPanel />
     </div>
   );

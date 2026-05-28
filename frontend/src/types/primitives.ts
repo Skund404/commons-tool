@@ -161,6 +161,8 @@ export interface PullRequest {
   files: DiffFile[];
   semantic: string[];
   recs: Recommendation[];
+  /** GitHub URL. Present on live PRs; empty for fixture PRs. */
+  url?: string;
 }
 
 export interface LocalChange {

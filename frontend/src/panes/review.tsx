@@ -91,7 +91,22 @@ export function PaneReview({ initialPrId, go }: PaneReviewProps) {
             >
               {isFetching ? "Refreshing…" : "Refresh PRs"}
             </Button>
-            <Button variant="default" size="sm" icon={<I.ExternalLink size={12} />}>
+            <Button
+              variant="default"
+              size="sm"
+              icon={<I.ExternalLink size={12} />}
+              onClick={() => {
+                if (pr?.url) {
+                  window.open(pr.url, "_blank", "noopener,noreferrer");
+                }
+              }}
+              disabled={!pr?.url}
+              title={
+                pr?.url
+                  ? `Open ${pr.url}`
+                  : "Fixture PR — no GitHub URL. Live PRs will have this enabled."
+              }
+            >
               Open on GitHub
             </Button>
           </>

@@ -1,6 +1,6 @@
 import { I } from "@/components";
 
-export function TitleBar() {
+export function TitleBar({ onOpenSearch }: { onOpenSearch?: () => void }) {
   return (
     <div
       style={{
@@ -42,7 +42,10 @@ export function TitleBar() {
           <I.Branch size={9} /> main
         </span>
       </div>
-      <div
+      <button
+        type="button"
+        onClick={() => onOpenSearch?.()}
+        title="Search commons (⌘K)"
         style={{
           display: "flex",
           alignItems: "center",
@@ -55,24 +58,19 @@ export function TitleBar() {
           justifyContent: "center",
           fontSize: 11.5,
           color: "var(--ink-3)",
+          cursor: onOpenSearch ? "pointer" : "default",
+          fontFamily: "inherit",
+        }}
+        onMouseEnter={(e) => {
+          if (onOpenSearch) e.currentTarget.style.background = "var(--surface)";
+        }}
+        onMouseLeave={(e) => {
+          if (onOpenSearch) e.currentTarget.style.background = "var(--surface-2)";
         }}
       >
         <I.Search size={11} />
         <span>Search commons</span>
-        <span
-          className="mono"
-          style={{
-            padding: "0 4px",
-            fontSize: 10,
-            borderRadius: 2,
-            background: "var(--surface)",
-            border: "1px solid var(--line)",
-            color: "var(--ink-3)",
-          }}
-        >
-          ⌘K
-        </span>
-      </div>
+      </button>
       <div
         style={{
           display: "flex",
