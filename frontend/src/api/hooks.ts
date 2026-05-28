@@ -92,6 +92,46 @@ export function useForkPrimitive() {
   });
 }
 
+// ─────────── intake (paste → preview → queue) ───────────
+
+export interface IntakeItem {
+  index: number;
+  source: "spec" | "ui" | "unknown";
+  slug?: string;
+  kind?: string;
+  name?: string;
+  ui_body?: Record<string, unknown>;
+  error?: string;
+  conflict?: string;
+}
+
+export interface IntakeParseResult {
+  items: IntakeItem[];
+  ok_count: number;
+  errors: number;
+}
+
+export interface IntakeQueueResult {
+  drafts: DraftEnvelope[];
+  errors?: string[];
+}
+
+export function useIntakeParse() {
+  return useMutation({
+    mutationFn: (text: string) =>
+      api.post<IntakeParseResult>("/api/intake/parse", { text }),
+  });
+}
+
+export function useIntakeQueue() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (items: Record<string, unknown>[]) =>
+      api.post<IntakeQueueResult>("/api/intake/queue", { items }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["drafts"] }),
+  });
+}
+
 // ─────────── draft lifecycle ───────────
 
 export interface DraftEnvelope {

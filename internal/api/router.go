@@ -48,6 +48,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/primitives/{slug}", s.handlePrimitiveDelete)
 	mux.HandleFunc("POST /api/primitives/{slug}/fork", s.handlePrimitiveFork)
 
+	// intake (paste pipeline for crowdsourced shares)
+	mux.HandleFunc("POST /api/intake/parse", s.handleIntakeParse)
+	mux.HandleFunc("POST /api/intake/queue", s.handleIntakeQueue)
+
 	// drafts (UI-shape bodies, mutable, lifecycle: create → validate → stage)
 	mux.HandleFunc("GET /api/drafts/primitives", s.handleDraftList)
 	mux.HandleFunc("POST /api/drafts/primitives", s.handleDraftCreate)

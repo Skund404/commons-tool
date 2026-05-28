@@ -11,6 +11,13 @@ against effort at any given moment.
 
 ## Recently shipped
 
+- **Intake pane** (paste-import): paste raw JSON shared on Discord/Reddit
+  (single, array, NDJSON, or `---`-separated). Auto-detects spec vs UI
+  shape per doc, projects spec → UI. Each accepted item lands in the
+  draft queue with per-row Edit / Validate / Stage / Discard. Replaces
+  the manual "edit a JSON file in the working tree" workflow for
+  crowdsourced primitives.
+
 - **Primitive CRUD + draft lifecycle** (PR feat/primitive-crud-drafts):
   POST/PUT/DELETE/fork on primitives plus full draft create→update→validate
   →stage→delete. Integration gates wrap every write (schema, hash auth,
@@ -30,7 +37,7 @@ GitHub Actions workflow at `.github/workflows/ci.yml` that runs:
 - `make verify-mock` against the in-repo mock corpus
 - `make test-go` (4 packages with tests)
 - `make build` (cross-check the embed pipeline)
-- `make install-pw && make e2e` (13 Playwright tests)
+- `make install-pw && make e2e` (16 Playwright tests)
 
 Once the workflow is green on a PR, add the job name to the branch-protection
 required status checks so merges block on red CI. The protection rule is

@@ -2,6 +2,7 @@ import type { PaneId } from "@/nav";
 import { PaneDashboard } from "@/panes/dashboard";
 import { PaneBrowser } from "@/panes/browser";
 import { PaneEditor } from "@/panes/editor";
+import { PaneIntake } from "@/panes/intake";
 import { PaneBundle } from "@/panes/bundle";
 import { PaneTaxonomy } from "@/panes/taxonomy";
 import { PaneIndex } from "@/panes/indexes";
@@ -42,6 +43,8 @@ export function PaneSwitch({ pane, paneState, go }: PaneSwitchProps) {
         />
       );
     }
+    case "intake":
+      return <PaneIntake go={go} />;
     case "bundle":
       return <PaneBundle />;
     case "taxonomy":
