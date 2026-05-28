@@ -50,3 +50,8 @@ yarn-error.log*
 # Coverage
 coverage/
 *.lcov
+
+# TypeScript build outputs (incremental)
+*.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
