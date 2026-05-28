@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import {
   Button,
   Card,
+  DeleteConfirmModal,
   Empty,
   Hash,
   I,
@@ -14,7 +15,11 @@ import {
   StateBadge,
   Toolbar,
 } from "@/components";
-import { usePrimitives } from "@/api/hooks";
+import {
+  usePrimitives,
+  useDeletePrimitive,
+  useForkPrimitive,
+} from "@/api/hooks";
 import type { PaneArgs } from "@/shell/pane-switch";
 import type { PaneId } from "@/nav";
 import type { Primitive, PrimitiveKind } from "@/types/primitives";
@@ -42,7 +47,32 @@ export function PaneBrowser({ go }: PaneProps) {
     new Set(["tool", "material", "technique", "workflow"]),
   );
   const [lang, setLang] = useState<LangKey>("en");
+  const [pendingDelete, setPendingDelete] = useState<Primitive | null>(null);
   const { data: prims = [] } = usePrimitives();
+  const deletePrim = useDeletePrimitive();
+  const forkPrim = useForkPrimitive();
+
+  const onFork = (p: Primitive) => {
+    forkPrim
+      .mutateAsync({ sourceSlug: p.slug })
+      .then((res) => {
+        const newSlug = (res.ui?.slug as string) ?? `${p.slug}-fork-1`;
+        go("editor", { slug: newSlug });
+      })
+      .catch((err) => {
+        console.error("fork failed:", err);
+      });
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    try {
+      await deletePrim.mutateAsync(pendingDelete.slug);
+    } catch (err) {
+      console.error("delete failed:", err);
+    }
+    setPendingDelete(null);
+  };
 
   const filtered = prims.filter(
     (p) =>
@@ -160,6 +190,12 @@ export function PaneBrowser({ go }: PaneProps) {
                   p={p}
                   lang={lang}
                   onClick={() => go("editor", { slug: p.id })}
+                  onFork={() => onFork(p)}
+                  onDelete={() => setPendingDelete(p)}
+                  busy={
+                    (forkPrim.isPending && forkPrim.variables?.sourceSlug === p.slug) ||
+                    (deletePrim.isPending && deletePrim.variables === p.slug)
+                  }
                 />
               ))}
             </div>
@@ -172,6 +208,8 @@ export function PaneBrowser({ go }: PaneProps) {
                   first={i === 0}
                   lang={lang}
                   onClick={() => go("editor", { slug: p.id })}
+                  onFork={() => onFork(p)}
+                  onDelete={() => setPendingDelete(p)}
                 />
               ))}
             </Card>
@@ -185,6 +223,15 @@ export function PaneBrowser({ go }: PaneProps) {
           )}
         </div>
       </div>
+
+      <DeleteConfirmModal
+        open={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        kind="primitive"
+        name={pendingDelete?.name ?? ""}
+        slug={pendingDelete?.slug ?? ""}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }
@@ -256,31 +303,92 @@ function PrimCard({
   p,
   lang,
   onClick,
+  onFork,
+  onDelete,
+  busy,
 }: {
   p: Primitive;
   lang: LangKey;
   onClick: () => void;
+  onFork?: () => void;
+  onDelete?: () => void;
+  busy?: boolean;
 }) {
+  const [hover, setHover] = useState(false);
   return (
     <div
       onClick={onClick}
       style={{
+        position: "relative",
         background: "var(--surface)",
         border: "1px solid var(--line)",
         borderRadius: 6,
         padding: 12,
         cursor: "pointer",
-        transition: "border-color 120ms, box-shadow 120ms",
+        opacity: busy ? 0.5 : 1,
+        transition: "border-color 120ms, box-shadow 120ms, opacity 120ms",
       }}
       onMouseEnter={(e) => {
+        setHover(true);
         e.currentTarget.style.borderColor = "var(--line-2)";
         e.currentTarget.style.boxShadow = "var(--shadow-1)";
       }}
       onMouseLeave={(e) => {
+        setHover(false);
         e.currentTarget.style.borderColor = "var(--line)";
         e.currentTarget.style.boxShadow = "none";
       }}
     >
+      {hover && (onFork || onDelete) && (
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 36,
+            display: "flex",
+            gap: 4,
+            zIndex: 1,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {onFork && (
+            <button
+              type="button"
+              onClick={onFork}
+              title="Fork this primitive"
+              style={{
+                padding: 3,
+                borderRadius: 3,
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+                cursor: "pointer",
+                display: "inline-flex",
+                color: "var(--ink-2)",
+              }}
+            >
+              <I.Fork size={12} />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              title="Delete this primitive"
+              style={{
+                padding: 3,
+                borderRadius: 3,
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+                cursor: "pointer",
+                display: "inline-flex",
+                color: "var(--sev-reject)",
+              }}
+            >
+              <I.Trash size={12} />
+            </button>
+          )}
+        </div>
+      )}
       <div
         style={{
           display: "flex",
@@ -334,26 +442,37 @@ function PrimRow({
   lang,
   onClick,
   first,
+  onFork,
+  onDelete,
 }: {
   p: Primitive;
   lang: LangKey;
   onClick: () => void;
   first: boolean;
+  onFork?: () => void;
+  onDelete?: () => void;
 }) {
+  const [hover, setHover] = useState(false);
   return (
     <div
       onClick={onClick}
       style={{
         display: "grid",
-        gridTemplateColumns: "32px 1.4fr 2fr 200px 90px 80px",
+        gridTemplateColumns: "32px 1.4fr 2fr 200px 90px 80px 56px",
         gap: 12,
         alignItems: "center",
         padding: "8px 12px",
         borderTop: first ? "0" : "1px solid var(--line)",
         cursor: "pointer",
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+      onMouseEnter={(e) => {
+        setHover(true);
+        e.currentTarget.style.background = "var(--surface-2)";
+      }}
+      onMouseLeave={(e) => {
+        setHover(false);
+        e.currentTarget.style.background = "transparent";
+      }}
     >
       <KindGlyph kind={p.kind} size={14} />
       <div>
@@ -382,6 +501,53 @@ function PrimRow({
         ))}
       </div>
       <StateBadge s={p.state} />
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          justifyContent: "flex-end",
+          opacity: hover ? 1 : 0,
+          transition: "opacity 120ms",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {onFork && (
+          <button
+            type="button"
+            onClick={onFork}
+            title="Fork this primitive"
+            style={{
+              padding: 3,
+              borderRadius: 3,
+              background: "var(--surface-2)",
+              border: "1px solid var(--line)",
+              cursor: "pointer",
+              display: "inline-flex",
+              color: "var(--ink-2)",
+            }}
+          >
+            <I.Fork size={12} />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            title="Delete this primitive"
+            style={{
+              padding: 3,
+              borderRadius: 3,
+              background: "var(--surface-2)",
+              border: "1px solid var(--line)",
+              cursor: "pointer",
+              display: "inline-flex",
+              color: "var(--sev-reject)",
+            }}
+          >
+            <I.Trash size={12} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

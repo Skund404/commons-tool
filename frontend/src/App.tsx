@@ -52,7 +52,7 @@ function Shell() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
-      const idx = "123456789".indexOf(e.key);
+      const idx = "1234567890".indexOf(e.key);
       if (idx >= 0 && NAV[idx]) {
         e.preventDefault();
         setPane(NAV[idx].id);

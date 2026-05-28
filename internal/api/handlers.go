@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	gogit "github.com/go-git/go-git/v5"
+
 	commonsdiff "github.com/Skund404/commons-tool/internal/diff"
 	"github.com/Skund404/commons-tool/internal/federation"
 	commonsgit "github.com/Skund404/commons-tool/internal/git"
@@ -721,7 +723,9 @@ func (s *Server) handleCommits(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, []any{})
 		return
 	}
-	iter, err := repo.Underlying().Log(nil)
+	// go-git's Log requires non-nil LogOptions; passing nil panics inside
+	// repository.go:1249. Empty struct == default (walk from HEAD).
+	iter, err := repo.Underlying().Log(&gogit.LogOptions{})
 	if err != nil {
 		writeError(w, 500, err.Error())
 		return

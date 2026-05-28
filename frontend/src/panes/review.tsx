@@ -745,7 +745,7 @@ function ReviewActionModal({
     } else {
       setComment("");
     }
-  }, [modal]);
+  }, [modal, prs]);
 
   if (!modal) return null;
 

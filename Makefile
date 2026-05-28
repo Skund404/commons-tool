@@ -5,6 +5,13 @@ GO       ?= go
 NPM      ?= npm
 NPX      ?= npx
 BIN_NAME := commons
+
+# Path to the mock corpus used by verify-mock, the Go integration tests, and
+# Playwright's webServer. Override locally to point at your vault copy:
+#   make verify-mock MOCK_PATH=../../Rillmark/_Proto-Commons/mock
+# CI clones proto-commons@test-corpus into ./.cache/proto-commons and points
+# this at it (see .github/workflows/ci.yml).
+MOCK_PATH ?= ../../Rillmark/_Proto-Commons/mock
 DIST_DIR := dist
 FE_DIR   := frontend
 EMBED_DIR := cmd/commons/frontend_dist
@@ -21,7 +28,7 @@ else
   HOST_BIN := $(BIN_NAME)
 endif
 
-.PHONY: help dev backend-dev frontend-dev build build-linux build-windows test test-go test-fe e2e install-pw lint fmt verify-mock clean install-fe embed-frontend
+.PHONY: help dev backend-dev frontend-dev build build-linux build-windows test test-go test-fe e2e install-pw lint fmt verify-mock fetch-mock clean install-fe embed-frontend
 
 help:
 	@echo "Targets:"
@@ -38,7 +45,8 @@ help:
 	@echo "  install-pw     - install Playwright + chromium browser"
 	@echo "  lint           - golangci-lint + eslint"
 	@echo "  fmt            - gofmt + prettier"
-	@echo "  verify-mock    - validate the tool against ../Rillmark/_Proto-Commons/mock"
+	@echo "  verify-mock    - validate the tool against \$$(MOCK_PATH)"
+	@echo "  fetch-mock     - shallow-clone proto-commons@test-corpus into .cache/"
 	@echo "  clean          - remove dist/, frontend/dist, embed dir contents, runtime/"
 
 install-fe:
@@ -81,7 +89,7 @@ build-windows: embed-frontend
 test: test-go test-fe
 
 test-go:
-	$(GO) test ./... -count=1
+	COMMONS_MOCK_PATH=$$(cd $(MOCK_PATH) && pwd) $(GO) test ./... -count=1
 
 test-fe:
 	cd $(FE_DIR) && $(NPM) test --silent --if-present
@@ -109,7 +117,22 @@ fmt:
 	cd $(FE_DIR) && $(NPM) run format --if-present
 
 verify-mock:
-	$(GO) run ./cmd/commons verify-mock --mock ../Rillmark/_Proto-Commons/mock
+	$(GO) run ./cmd/commons verify-mock --mock $(MOCK_PATH)
+
+# Used by test-go + e2e on CI: clones proto-commons test-corpus branch
+# shallowly into ./.cache/proto-commons if not already present. Local devs
+# typically point MOCK_PATH at their vault and never hit this target.
+fetch-mock:
+	@mkdir -p .cache
+	@if [ ! -d .cache/proto-commons/.git ]; then \
+		git clone --branch test-corpus --depth 1 \
+			https://github.com/Skund404/proto-commons.git \
+			.cache/proto-commons; \
+	else \
+		git -C .cache/proto-commons fetch --depth 1 origin test-corpus && \
+		git -C .cache/proto-commons reset --hard origin/test-corpus; \
+	fi
+	@echo "MOCK_PATH=$$(pwd)/.cache/proto-commons (export this to use)"
 
 clean:
 	rm -rf $(DIST_DIR) $(FE_DIR)/dist $(FE_DIR)/node_modules runtime

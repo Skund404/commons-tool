@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -8,11 +9,33 @@ import (
 	"github.com/Skund404/commons-tool/internal/indexer"
 )
 
-const mockRoot = `F:\Rillmark\_Proto-Commons\mock`
+// mockRoot returns the mock corpus path, preferring $COMMONS_MOCK_PATH
+// (set by CI) before falling back to the local cache or Pascal's vault.
+// Skips the test if no corpus is reachable so a fresh clone stays green.
+func mockRoot(t *testing.T) string {
+	t.Helper()
+	if p := os.Getenv("COMMONS_MOCK_PATH"); p != "" {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	for _, c := range []string{
+		filepath.FromSlash("../../.cache/proto-commons"),
+		filepath.FromSlash(`F:\Rillmark\_Proto-Commons\mock`),
+		filepath.FromSlash("../../../Rillmark/_Proto-Commons/mock"),
+	} {
+		if _, err := os.Stat(c); err == nil {
+			abs, _ := filepath.Abs(c)
+			return abs
+		}
+	}
+	t.Skip("mock corpus not found; set COMMONS_MOCK_PATH or run `make fetch-mock`")
+	return ""
+}
 
 func loadMockCorpus(t *testing.T) []indexer.Item {
 	t.Helper()
-	c, err := indexer.LoadCorpus(mockRoot, "primitives")
+	c, err := indexer.LoadCorpus(mockRoot(t), "primitives")
 	if err != nil {
 		t.Fatalf("mock corpus: %v", err)
 	}
@@ -53,7 +76,7 @@ func TestFixturePR12_ScratchAwl(t *testing.T) {
 	if pr == nil {
 		t.Fatal("PR #12 fixture not found")
 	}
-	bundles, _ := loadBundlesShim(mockRoot)
+	bundles, _ := loadBundlesShim(mockRoot(t))
 	recs := Recommend(pr.ToDiff(), corpus, bundles, DefaultSettings())
 
 	t.Logf("PR #12 recs (%d):", len(recs))
@@ -107,7 +130,7 @@ func TestFixturePR11_CocoboloSlicker(t *testing.T) {
 	if pr == nil {
 		t.Fatal("PR #11 fixture not found")
 	}
-	bundles, _ := loadBundlesShim(mockRoot)
+	bundles, _ := loadBundlesShim(mockRoot(t))
 	recs := Recommend(pr.ToDiff(), corpus, bundles, DefaultSettings())
 
 	t.Logf("PR #11 recs (%d):", len(recs))
@@ -139,7 +162,7 @@ func TestFixturePR10_PinkingShearsMisclassified(t *testing.T) {
 	if pr == nil {
 		t.Fatal("PR #10 fixture not found")
 	}
-	bundles, _ := loadBundlesShim(mockRoot)
+	bundles, _ := loadBundlesShim(mockRoot(t))
 	recs := Recommend(pr.ToDiff(), corpus, bundles, DefaultSettings())
 
 	t.Logf("PR #10 recs (%d):", len(recs))
@@ -174,10 +197,10 @@ func TestFixturePR10_PinkingShearsMisclassified(t *testing.T) {
 func TestRecommenderIgnoresUnrelatedFiles(t *testing.T) {
 	// Sanity: a SemanticDiff with only index files (non-records) yields no recs.
 	corpus := loadMockCorpus(t)
-	if _, err := filepath.Abs(mockRoot); err != nil {
+	if _, err := filepath.Abs(mockRoot(t)); err != nil {
 		t.Fatal(err)
 	}
-	bundles, _ := loadBundlesShim(mockRoot)
+	bundles, _ := loadBundlesShim(mockRoot(t))
 	pr := FixturePR{}
 	recs := Recommend(pr.ToDiff(), corpus, bundles, DefaultSettings())
 	if len(recs) != 0 {

@@ -17,7 +17,19 @@ import {
   Toolbar,
 } from "@/components";
 import { PASCAL_EMITTER_URI } from "@/fixtures";
-import { usePrimitives } from "@/api/hooks";
+import {
+  usePrimitives,
+  useCreatePrimitive,
+  useUpdatePrimitive,
+  useDeletePrimitive,
+  useForkPrimitive,
+  useCreateDraft,
+  useUpdateDraft,
+  useValidateDraft,
+  useStageDraft,
+  useDeleteDraft,
+  type DraftValidationResult,
+} from "@/api/hooks";
 import type { PaneArgs } from "@/shell/pane-switch";
 import type { PaneId } from "@/nav";
 import type {
@@ -115,8 +127,149 @@ export function PaneEditor({ slug, fresh, fork, onFork, onDelete, go }: PaneEdit
   const [saved, setSaved] = useState(false);
   const [picker, setPicker] = useState<{ type: Relationship["type"] } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [remoteIssues, setRemoteIssues] = useState<
+    DraftValidationResult["errors"]
+  >(undefined);
+  const [banner, setBanner] = useState<{ kind: "ok" | "warn" | "err"; msg: string } | null>(
+    null,
+  );
 
-  useEffect(() => setP(start), [start]);
+  // Mutations.
+  const createPrim = useCreatePrimitive();
+  const updatePrim = useUpdatePrimitive();
+  const deletePrim = useDeletePrimitive();
+  const forkPrim = useForkPrimitive();
+  const createDraft = useCreateDraft();
+  const updateDraft = useUpdateDraft();
+  const validateDraft = useValidateDraft();
+  const stageDraft = useStageDraft();
+  const deleteDraft = useDeleteDraft();
+
+  // Whether the primitive currently in the editor already lives in the corpus.
+  const isExistingPrimitive = !fresh && !!slug && PRIMS.some((x) => x.id === slug || x.slug === slug);
+
+  useEffect(() => {
+    setP(start);
+    setDraftId(null);
+    setRemoteIssues(undefined);
+    setBanner(null);
+  }, [start]);
+
+  // Surface banners briefly then clear them.
+  useEffect(() => {
+    if (!banner) return;
+    const t = setTimeout(() => setBanner(null), banner.kind === "err" ? 6000 : 2500);
+    return () => clearTimeout(t);
+  }, [banner]);
+
+  async function handleSaveDraft() {
+    try {
+      if (draftId) {
+        await updateDraft.mutateAsync({ id: draftId, body: p });
+      } else {
+        const env = await createDraft.mutateAsync(p);
+        setDraftId(env.id);
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1200);
+      setBanner({ kind: "ok", msg: "Saved as draft" });
+    } catch (e) {
+      setBanner({ kind: "err", msg: "Save failed: " + (e as Error).message });
+    }
+  }
+
+  async function handleValidate() {
+    try {
+      let id = draftId;
+      if (!id) {
+        const env = await createDraft.mutateAsync(p);
+        id = env.id;
+        setDraftId(id);
+      } else {
+        await updateDraft.mutateAsync({ id, body: p });
+      }
+      const result = await validateDraft.mutateAsync(id);
+      setRemoteIssues(result.errors ?? []);
+      if (result.ok) {
+        set({ state: "validated" });
+        setBanner({ kind: "ok", msg: "Validation passed" });
+      } else {
+        setBanner({
+          kind: "warn",
+          msg: `Validation: ${result.errors?.length ?? 0} issue(s)`,
+        });
+      }
+    } catch (e) {
+      setBanner({ kind: "err", msg: "Validate failed: " + (e as Error).message });
+    }
+  }
+
+  async function handleStage() {
+    try {
+      if (isExistingPrimitive) {
+        const res = await updatePrim.mutateAsync({ slug: p.slug, body: p });
+        setBanner({
+          kind: "ok",
+          msg: res.warnings?.length
+            ? `Updated; ${res.warnings.length} warning(s)`
+            : "Updated",
+        });
+        go?.("browser", { slug: res.ui?.slug ?? p.slug });
+      } else {
+        let res;
+        if (draftId) {
+          await updateDraft.mutateAsync({ id: draftId, body: p });
+          res = await stageDraft.mutateAsync(draftId);
+          setDraftId(null);
+        } else {
+          res = await createPrim.mutateAsync(p);
+        }
+        setBanner({
+          kind: "ok",
+          msg: res.warnings?.length
+            ? `Published; ${res.warnings.length} warning(s)`
+            : "Published",
+        });
+        go?.("browser", { slug: res.ui?.slug ?? p.slug });
+      }
+    } catch (e) {
+      setBanner({ kind: "err", msg: "Publish failed: " + (e as Error).message });
+    }
+  }
+
+  async function handleDelete() {
+    setConfirmDelete(false);
+    try {
+      if (isExistingPrimitive) {
+        await deletePrim.mutateAsync(p.slug);
+      } else if (draftId) {
+        await deleteDraft.mutateAsync(draftId);
+        setDraftId(null);
+      }
+      onDelete?.();
+      go?.("browser");
+    } catch (e) {
+      setBanner({ kind: "err", msg: "Delete failed: " + (e as Error).message });
+    }
+  }
+
+  async function handleFork() {
+    if (!isExistingPrimitive) {
+      // For unsaved drafts/new primitives, fall back to the existing client-side
+      // shortcut so the user still gets a fresh editor.
+      onFork?.(p.id);
+      return;
+    }
+    try {
+      const res = await forkPrim.mutateAsync({ sourceSlug: p.slug });
+      const newSlug = (res.ui?.slug as string) ?? `${p.slug}-fork-1`;
+      go?.("editor", { slug: newSlug });
+      setBanner({ kind: "ok", msg: `Forked → ${newSlug}` });
+    } catch (e) {
+      setBanner({ kind: "err", msg: "Fork failed: " + (e as Error).message });
+    }
+  }
 
   const issues = useMemo<Issue[]>(() => {
     const out: Issue[] = [];
@@ -154,8 +307,20 @@ export function PaneEditor({ slug, fresh, fork, onFork, onDelete, go }: PaneEdit
         });
       }
     });
+    // Merge in server-side validation findings from the last Validate run.
+    // These are authoritative — they reflect what the spec validator + slug-
+    // collision gate emit, which the local heuristics cannot fully reproduce.
+    if (remoteIssues) {
+      for (const r of remoteIssues) {
+        out.push({
+          sev: r.sev === "warn" ? "warn" : "reject",
+          field: r.field || "server",
+          msg: r.message,
+        });
+      }
+    }
     return out;
-  }, [p]);
+  }, [p, remoteIssues, PRIMS]);
 
   const rejectCount = issues.filter((i) => i.sev === "reject").length;
   const warnCount = issues.filter((i) => i.sev === "warn").length;
@@ -236,46 +401,55 @@ export function PaneEditor({ slug, fresh, fork, onFork, onDelete, go }: PaneEdit
               variant="ghost"
               size="sm"
               icon={<I.Fork size={12} />}
-              onClick={() => onFork?.(p.id)}
-              title="Fork creates a new primitive with predecessor lineage pointing at this one."
+              onClick={handleFork}
+              disabled={forkPrim.isPending}
+              title="Fork creates a new primitive with predecessor + derived_from relationships pointing at this one."
             >
-              Fork
+              {forkPrim.isPending ? "Forking…" : "Fork"}
             </Button>
             <Button
               variant="danger"
               size="sm"
               icon={<I.Trash size={12} />}
               onClick={() => setConfirmDelete(true)}
+              disabled={deletePrim.isPending}
             >
               Delete
             </Button>
             <Button
               variant="default"
               size="sm"
-              onClick={() => {
-                setSaved(true);
-                setTimeout(() => setSaved(false), 1500);
-                set({ state: "draft" });
-              }}
+              onClick={handleSaveDraft}
+              disabled={createDraft.isPending || updateDraft.isPending}
             >
-              {saved ? "Saved" : "Save draft"}
+              {saved
+                ? "Saved"
+                : createDraft.isPending || updateDraft.isPending
+                  ? "Saving…"
+                  : "Save draft"}
             </Button>
             <Button
               variant="default"
               size="sm"
               icon={<I.Check size={12} />}
-              onClick={() => canPublish && set({ state: "validated" })}
+              onClick={handleValidate}
+              disabled={validateDraft.isPending}
             >
-              Validate
+              {validateDraft.isPending ? "Validating…" : "Validate"}
             </Button>
             <Button
               variant="primary"
               size="sm"
               icon={<I.Upload size={12} />}
-              disabled={!canPublish}
-              onClick={() => set({ state: "staged" })}
+              disabled={
+                !canPublish ||
+                createPrim.isPending ||
+                updatePrim.isPending ||
+                stageDraft.isPending
+              }
+              onClick={handleStage}
             >
-              Stage for publish
+              {isExistingPrimitive ? "Save changes" : "Stage for publish"}
             </Button>
           </>
         }
@@ -611,11 +785,46 @@ export function PaneEditor({ slug, fresh, fork, onFork, onDelete, go }: PaneEdit
         kind="primitive"
         name={p.name}
         slug={p.slug}
-        onConfirm={() => {
-          setConfirmDelete(false);
-          onDelete?.();
-        }}
+        onConfirm={handleDelete}
       />
+
+      {banner && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 18,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 90,
+            padding: "10px 16px",
+            borderRadius: 6,
+            fontSize: 13,
+            fontWeight: 500,
+            background:
+              banner.kind === "ok"
+                ? "var(--sev-approve-soft, #ddebd6)"
+                : banner.kind === "warn"
+                  ? "var(--sev-warn-soft, #f3e6c2)"
+                  : "var(--sev-reject-soft, #f3d0d0)",
+            color:
+              banner.kind === "ok"
+                ? "var(--sev-approve, #2e5d35)"
+                : banner.kind === "warn"
+                  ? "var(--sev-warn, #8a5a0a)"
+                  : "var(--sev-reject, #802020)",
+            border: "1px solid",
+            borderColor:
+              banner.kind === "ok"
+                ? "var(--sev-approve, #2e5d35)"
+                : banner.kind === "warn"
+                  ? "var(--sev-warn, #8a5a0a)"
+                  : "var(--sev-reject, #802020)",
+            boxShadow: "0 6px 16px rgba(31,27,23,0.10)",
+          }}
+        >
+          {banner.msg}
+        </div>
+      )}
 
       <PrimitiveSwitcherModal
         open={switcherOpen}

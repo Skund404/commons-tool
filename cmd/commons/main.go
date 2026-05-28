@@ -322,8 +322,18 @@ func runServer(args []string) int {
 		fmt.Fprintln(os.Stderr, "warn: federation manager unavailable:", err)
 	}
 
-	srv2.GitHub = gh.New("", !*commitMerge, gh.TokenFromGh)
-	srv2.GitHub.Log = os.Stderr
+	// Only wire the GitHub client if gh CLI is authed AND returns a
+	// non-empty token. On GH Actions runners gh is pre-installed and
+	// `gh auth token` exits 0 with an empty string when GH_TOKEN isn't set
+	// — the empty-string check catches that case. Without this guard every
+	// /api/prs call would spawn a `gh pr list` subprocess that fails with
+	// an auth error, saturating goroutines on the runner.
+	if tok, err := gh.TokenFromGh(); err == nil && tok != "" {
+		srv2.GitHub = gh.New("", !*commitMerge, gh.TokenFromGh)
+		srv2.GitHub.Log = os.Stderr
+	} else {
+		fmt.Fprintln(os.Stderr, "info: gh CLI unauthenticated; PR list will use fixtures only")
+	}
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf("127.0.0.1:%d", *port),
