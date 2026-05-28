@@ -162,17 +162,20 @@ test.describe("editor primitive switcher", () => {
     await expect(page.getByText(/Saddle Stitch/i).first()).toBeVisible({ timeout: 5_000 });
   });
 
-  test("Cmd/Ctrl+K opens the switcher from the editor", async ({ page }) => {
+  test("Cmd/Ctrl+K opens the global search modal from any pane", async ({ page }) => {
+    // Cmd/Ctrl+K used to open the Editor's scoped switcher; it now opens the
+    // app-level GlobalSearchModal (App.tsx) instead, which works from any
+    // pane. Verify from the Editor since that was the original coverage.
     await landOn(page);
     await gotoPane(page, "Browse");
     await expect(page.getByText("Round Knife").first()).toBeVisible({ timeout: 10_000 });
     await page.getByText("Round Knife").first().click();
-    // Ensure editor mounted before firing the shortcut.
     await expect(
       page.locator("button").filter({ hasText: /^Browse$/ }).first(),
     ).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press("Control+K");
-    await expect(page.getByText("Switch primitive")).toBeVisible();
+    // Global modal is titled "Search commons" (vs the editor's "Switch primitive").
+    await expect(page.getByText("Search commons").first()).toBeVisible();
   });
 });
 
