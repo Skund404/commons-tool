@@ -14,7 +14,7 @@ import {
   StateBadge,
   Toolbar,
 } from "@/components";
-import { PRIMS } from "@/fixtures";
+import { usePrimitives } from "@/api/hooks";
 import type { PaneArgs } from "@/shell/pane-switch";
 import type { PaneId } from "@/nav";
 import type { Primitive, PrimitiveKind } from "@/types/primitives";
@@ -42,8 +42,9 @@ export function PaneBrowser({ go }: PaneProps) {
     new Set(["tool", "material", "technique", "workflow"]),
   );
   const [lang, setLang] = useState<LangKey>("en");
+  const { data: prims = [] } = usePrimitives();
 
-  const filtered = PRIMS.filter(
+  const filtered = prims.filter(
     (p) =>
       kinds.has(p.kind) &&
       (!q ||
@@ -59,7 +60,7 @@ export function PaneBrowser({ go }: PaneProps) {
             <I.Search size={16} style={{ color: "var(--ink-2)" }} />
             <span style={{ fontWeight: 600 }}>Browse</span>
             <span style={{ color: "var(--ink-4)", fontSize: 12 }}>
-              · {filtered.length} of {PRIMS.length} primitives
+              · {filtered.length} of {prims.length} primitives
             </span>
           </>
         }
@@ -120,7 +121,7 @@ export function PaneBrowser({ go }: PaneProps) {
                   }}
                   icon={<Ico size={13} />}
                   label={KIND_LABEL[k] ?? k}
-                  count={PRIMS.filter((p) => p.kind === k).length}
+                  count={prims.filter((p) => p.kind === k).length}
                 />
               );
             })}

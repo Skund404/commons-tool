@@ -7,7 +7,7 @@ import {
   Segmented,
   Toolbar,
 } from "@/components";
-import { PRIMS } from "@/fixtures";
+import { usePrimitives } from "@/api/hooks";
 import type { Primitive, PrimitiveKind } from "@/types/primitives";
 
 type LangKey = "en" | "de" | "fr";
@@ -17,6 +17,7 @@ export function PaneTaxonomy() {
   const [lang, setLang] = useState<LangKey>("en");
   const [kindFilter, setKindFilter] = useState<KindFilter>("tool");
   void lang;
+  const { data: PRIMS = [] } = usePrimitives();
   const roots = PRIMS.filter((p) => p.kind === kindFilter && !p.specializes);
 
   const childrenOf = (slug: string) => PRIMS.filter((p) => p.specializes === slug);

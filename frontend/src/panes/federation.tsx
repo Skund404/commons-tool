@@ -8,7 +8,7 @@ import {
   LangBadge,
   Toolbar,
 } from "@/components";
-import { FED_ROOTS, PRIMS } from "@/fixtures";
+import { useFederationRoots, usePrimitives } from "@/api/hooks";
 import type { Primitive } from "@/types/primitives";
 
 const BINDERY_EMITTER = "opg://c2e1a8d4-bb27-4ef0-9a13-7e8c5f1a23bd";
@@ -115,9 +115,19 @@ const BOOKBINDING_PRIMS: Primitive[] = [
 ];
 
 export function PaneFederation() {
-  const [active, setActive] = useState(FED_ROOTS[2]?.id ?? FED_ROOTS[0]?.id ?? "");
-  const root = FED_ROOTS.find((r) => r.id === active);
-  if (!root) return null;
+  const { data: FED_ROOTS = [] } = useFederationRoots();
+  const { data: PRIMS = [] } = usePrimitives();
+  const [active, setActive] = useState("");
+
+  const root = FED_ROOTS.find((r) => r.id === active) ?? FED_ROOTS[0];
+  if (!root) {
+    // No federation roots yet (empty registry). Render an empty hint.
+    return (
+      <div style={{ padding: 40, color: "var(--ink-3)", fontSize: 13 }}>
+        No federation roots configured yet. Add one to browse another commons.
+      </div>
+    );
+  }
   const isPrimary = root.role === "primary";
 
   const visible: Primitive[] = isPrimary

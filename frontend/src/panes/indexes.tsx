@@ -12,8 +12,8 @@ import {
   Tabs,
   Toolbar,
 } from "@/components";
-import { PRIMS } from "@/fixtures";
-import type { PrimitiveKind } from "@/types/primitives";
+import { usePrimitives, useRegenerateIndexes } from "@/api/hooks";
+import type { Primitive, PrimitiveKind } from "@/types/primitives";
 
 type LangKey = "en" | "de" | "fr";
 type IndexTab = "resolve" | "taxonomy";
@@ -29,6 +29,8 @@ export function PaneIndex() {
   const [tab, setTab] = useState<IndexTab>("resolve");
   const [lang, setLang] = useState<LangKey>("en");
   const [taxView, setTaxView] = useState<TaxView>("tree");
+  const { data: PRIMS = [] } = usePrimitives();
+  const regen = useRegenerateIndexes();
 
   const rows = useMemo(() => {
     const out: {
@@ -50,11 +52,11 @@ export function PaneIndex() {
     });
     out.sort((a, b) => a.key.localeCompare(b.key));
     return out;
-  }, [lang]);
+  }, [lang, PRIMS]);
 
   const taxTree = useMemo<Record<string, TaxTree>>(() => {
     const t: Record<string, TaxTree> = {};
-    const byParent: Record<string, typeof PRIMS> = {};
+    const byParent: Record<string, Primitive[]> = {};
     PRIMS.forEach((p) => {
       const parent = p.specializes ?? "__root__";
       (byParent[parent] = byParent[parent] ?? []).push(p);
@@ -75,7 +77,7 @@ export function PaneIndex() {
       t[k] = node;
     });
     return t;
-  }, []);
+  }, [PRIMS]);
 
   const entryCount = (function count(o: TaxTree): number {
     let n = 0;
@@ -101,8 +103,14 @@ export function PaneIndex() {
           <>
             <SeverityChip sev="approve" />{" "}
             <span style={{ fontSize: 11, color: "var(--ink-3)" }}>matches committed</span>
-            <Button variant="default" size="sm" icon={<I.Refresh size={12} />}>
-              Regenerate
+            <Button
+              variant="default"
+              size="sm"
+              icon={<I.Refresh size={12} />}
+              onClick={() => regen.mutate()}
+              disabled={regen.isPending}
+            >
+              {regen.isPending ? "Regenerating…" : "Regenerate"}
             </Button>
           </>
         }
@@ -298,7 +306,8 @@ function TaxRow({
   kind: PrimitiveKind;
 }) {
   const [open, setOpen] = useState(true);
-  const p = PRIMS.find((x) => x.id === slug);
+  const { data: prims = [] } = usePrimitives();
+  const p = prims.find((x: Primitive) => x.id === slug);
   const childKeys = Object.keys(kids);
   const hasKids = childKeys.length > 0;
   const Ico = KIND_ICON[(p?.kind ?? kind) as PrimitiveKind];

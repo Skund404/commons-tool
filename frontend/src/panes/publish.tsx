@@ -11,7 +11,7 @@ import {
   StateBadge,
   Toolbar,
 } from "@/components";
-import { LOCAL_CHANGES } from "@/fixtures";
+import { useLocalChanges } from "@/api/hooks";
 import type { LocalChange, PrimitiveKind, Severity } from "@/types/primitives";
 
 interface Rec {
@@ -46,10 +46,17 @@ const STEPS: StepDef[] = [
 ];
 
 export function PanePublish() {
+  const { data: LOCAL_CHANGES = [] } = useLocalChanges();
   const [step, setStep] = useState(0);
-  const [include, setInclude] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(LOCAL_CHANGES.map((c) => [c.path, true])),
-  );
+  const [include, setInclude] = useState<Record<string, boolean>>({});
+
+  // Initialize selection when local changes arrive.
+  useEffect(() => {
+    if (LOCAL_CHANGES.length > 0 && Object.keys(include).length === 0) {
+      setInclude(Object.fromEntries(LOCAL_CHANGES.map((c) => [c.path, true])));
+    }
+  }, [LOCAL_CHANGES, include]);
+
   const [commitMsg, setCommitMsg] = useState(
     "Add French skiver primitive; update skiving technique steps; regen indexes",
   );
@@ -271,6 +278,7 @@ function StageStep({
   include: Record<string, boolean>;
   setInclude: (m: Record<string, boolean>) => void;
 }) {
+  const { data: LOCAL_CHANGES = [] } = useLocalChanges();
   const cnt = LOCAL_CHANGES.filter((c) => include[c.path]).length;
   return (
     <div>

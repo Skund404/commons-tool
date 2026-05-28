@@ -10,18 +10,31 @@ import {
   SeverityDot,
   StateBadge,
 } from "@/components";
-import { PRIMS, BUNDLES as _BUNDLES, PRS, SUGGESTIONS, COMMITS, FED_ROOTS, LOCAL_CHANGES, PASCAL_EMITTER_URI } from "@/fixtures";
+import { PASCAL_EMITTER_URI } from "@/fixtures";
+import {
+  useCommits,
+  useFederationRoots,
+  useLocalChanges,
+  usePRs,
+  usePrimitives,
+  useSuggestions,
+} from "@/api/hooks";
 import type { PaneArgs } from "@/shell/pane-switch";
 import type { PaneId } from "@/nav";
-import type { PullRequest, Suggestion, Commit, FederationRoot, PrimitiveKind } from "@/types/primitives";
-
-void _BUNDLES;
+import type { PullRequest, Suggestion, Commit, FederationRoot, LocalChange, PrimitiveKind } from "@/types/primitives";
 
 interface PaneProps {
   go: (id: PaneId, args?: PaneArgs) => void;
 }
 
 export function PaneDashboard({ go }: PaneProps) {
+  const { data: prims = [] } = usePrimitives();
+  const { data: prs = [] } = usePRs();
+  const { data: commits = [] } = useCommits();
+  const { data: federationRoots = [] } = useFederationRoots();
+  const { data: localChanges = [] } = useLocalChanges();
+  const { data: suggestions = [] } = useSuggestions();
+
   const counts = useMemo(() => {
     const c: Record<PrimitiveKind, number> = {
       tool: 0,
@@ -31,15 +44,15 @@ export function PaneDashboard({ go }: PaneProps) {
       project: 0,
       event: 0,
     };
-    PRIMS.forEach((p) => {
+    prims.forEach((p) => {
       c[p.kind] = (c[p.kind] ?? 0) + 1;
     });
     return c;
-  }, []);
+  }, [prims]);
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
-  const openPRs = PRS;
-  const openSug = SUGGESTIONS.filter((s) => s.status !== "published" && s.status !== "declined");
+  const openPRs = prs;
+  const openSug = suggestions.filter((s) => s.status !== "published" && s.status !== "declined");
 
   return (
     <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16, overflowY: "auto" }}>
@@ -59,7 +72,7 @@ export function PaneDashboard({ go }: PaneProps) {
           <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>
             The commons has <b style={{ color: "var(--ink)" }}>{total} primitives</b>,&nbsp;
             <b style={{ color: "var(--ink)" }}>{openPRs.length} open pull requests</b>, and&nbsp;
-            <b style={{ color: "var(--ink)" }}>{LOCAL_CHANGES.length} uncommitted local changes</b>.
+            <b style={{ color: "var(--ink)" }}>{localChanges.length} uncommitted local changes</b>.
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -74,7 +87,7 @@ export function PaneDashboard({ go }: PaneProps) {
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2.1fr) minmax(0, 1fr)", gap: 14 }}>
         <CorpusHealthCard counts={counts} total={total} />
-        <LocalChangesCard go={go} />
+        <LocalChangesCard go={go} changes={localChanges} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 14 }}>
@@ -83,8 +96,8 @@ export function PaneDashboard({ go }: PaneProps) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.3fr) minmax(0, 1fr)", gap: 14 }}>
-        <RecentCommitsCard commits={COMMITS} />
-        <FederationCard roots={FED_ROOTS} />
+        <RecentCommitsCard commits={commits} />
+        <FederationCard roots={federationRoots} />
       </div>
     </div>
   );
@@ -208,15 +221,15 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: "
   );
 }
 
-function LocalChangesCard({ go }: { go: PaneProps["go"] }) {
+function LocalChangesCard({ go, changes }: { go: PaneProps["go"]; changes: LocalChange[] }) {
   const cnt: Record<string, number> = { "+": 0, M: 0, "-": 0 };
-  LOCAL_CHANGES.forEach((c) => {
+  changes.forEach((c) => {
     cnt[c.op] = (cnt[c.op] ?? 0) + 1;
   });
   return (
     <Card
       title="Local working state"
-      subtitle={`${LOCAL_CHANGES.length} files changed against \`main\``}
+      subtitle={`${changes.length} files changed against \`main\``}
       action={<StateBadge s="staged" />}
     >
       <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
@@ -225,7 +238,7 @@ function LocalChangesCard({ go }: { go: PaneProps["go"] }) {
         <Pill label={`-${cnt["-"]}`} color="var(--sev-reject)" sub="deleted" />
       </div>
       <div style={{ borderTop: "1px solid var(--line)", paddingTop: 8, marginBottom: 10 }}>
-        {LOCAL_CHANGES.slice(0, 3).map((f, i) => (
+        {changes.slice(0, 3).map((f, i) => (
           <div
             key={i}
             style={{
@@ -260,9 +273,9 @@ function LocalChangesCard({ go }: { go: PaneProps["go"] }) {
             </span>
           </div>
         ))}
-        {LOCAL_CHANGES.length > 3 && (
+        {changes.length > 3 && (
           <div style={{ fontSize: 11, color: "var(--ink-3)", padding: "2px 0" }}>
-            +{LOCAL_CHANGES.length - 3} more…
+            +{changes.length - 3} more…
           </div>
         )}
       </div>

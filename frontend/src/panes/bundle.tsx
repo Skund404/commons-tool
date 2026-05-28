@@ -16,8 +16,9 @@ import {
   Tabs,
   Toolbar,
 } from "@/components";
-import { BUNDLES as INITIAL_BUNDLES, PRIMS, PASCAL_EMITTER_URI } from "@/fixtures";
-import type { Bundle, BundleItem, BundleRole, PrimitiveKind } from "@/types/primitives";
+import { PASCAL_EMITTER_URI } from "@/fixtures";
+import { useBundles, usePrimitives } from "@/api/hooks";
+import type { Bundle, BundleItem, BundleRole, Primitive, PrimitiveKind } from "@/types/primitives";
 
 type Route =
   | { mode: "list" }
@@ -30,6 +31,7 @@ export function PaneBundle() {
   const [route, setRoute] = useState<Route>({ mode: "list" });
   const [extra, setExtra] = useState<Bundle[]>([]);
   const [deleted, setDeleted] = useState<Set<string>>(new Set());
+  const { data: INITIAL_BUNDLES = [] } = useBundles();
 
   const all = [...INITIAL_BUNDLES, ...extra].filter((b) => !deleted.has(b.id));
 
@@ -259,6 +261,8 @@ function BundleEditor({
   const [activeLang, setActiveLang] = useState<LangKey>("en");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saved, setSaved] = useState(false);
+  const { data: PRIMS = [] } = usePrimitives();
+  const { data: INITIAL_BUNDLES = [] } = useBundles();
 
   const setName = (lang: LangKey, patch: Partial<{ name: string; desc: string }>) =>
     setB((prev) => ({
@@ -431,8 +435,8 @@ function BundleEditor({
                 b.items.map((it, i) => {
                   const isBundle = it.kind === "bundle";
                   const target = isBundle
-                    ? INITIAL_BUNDLES.find((x) => x.slug === it.slug)
-                    : PRIMS.find((p) => p.slug === it.slug);
+                    ? INITIAL_BUNDLES.find((x: Bundle) => x.slug === it.slug)
+                    : PRIMS.find((p: Primitive) => p.slug === it.slug);
                   const Ico = isBundle
                     ? I.Bundle
                     : KIND_ICON[it.kind as PrimitiveKind];

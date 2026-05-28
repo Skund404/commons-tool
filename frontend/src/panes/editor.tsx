@@ -16,7 +16,8 @@ import {
   Tabs,
   Toolbar,
 } from "@/components";
-import { PRIMS, PASCAL_EMITTER_URI } from "@/fixtures";
+import { PASCAL_EMITTER_URI } from "@/fixtures";
+import { usePrimitives } from "@/api/hooks";
 import type {
   Outcome,
   Primitive,
@@ -65,6 +66,7 @@ const SCRATCH_AWL_TEMPLATE: Primitive = {
 };
 
 export function PaneEditor({ slug, fresh, fork, onFork, onDelete }: PaneEditorProps) {
+  const { data: PRIMS = [] } = usePrimitives();
   const start = useMemo<Primitive>(() => {
     if (fork) {
       const source = PRIMS.find((p) => p.id === fork);
@@ -91,7 +93,7 @@ export function PaneEditor({ slug, fresh, fork, onFork, onDelete }: PaneEditorPr
       if (found) return found;
     }
     return SCRATCH_AWL_TEMPLATE;
-  }, [slug, fresh, fork]);
+  }, [slug, fresh, fork, PRIMS]);
 
   const [p, setP] = useState<Primitive>(start);
   const [activeLang, setActiveLang] = useState<LangKey>("en");
@@ -1146,6 +1148,7 @@ function RelList({
   rels: Relationship[];
   onChange: (r: Relationship[]) => void;
 }) {
+  const { data: PRIMS = [] } = usePrimitives();
   return (
     <div
       style={{
@@ -1239,6 +1242,7 @@ function RelPickerModal({
       setQ("");
     }
   }, [picker]);
+  const { data: PRIMS = [] } = usePrimitives();
   if (!picker) return null;
   const filtered = PRIMS.filter(
     (p) =>

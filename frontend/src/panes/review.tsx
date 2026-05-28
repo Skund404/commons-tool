@@ -16,7 +16,7 @@ import {
   StateBadge,
   Toolbar,
 } from "@/components";
-import { PRS, LOCAL_CHANGES } from "@/fixtures";
+import { usePRs, useLocalChanges, useMergePR, useCommentPR, useReviewPR } from "@/api/hooks";
 import type { LocalChange, PrimitiveKind, PullRequest, Recommendation, Severity } from "@/types/primitives";
 
 type ReviewTab = "prs" | "local" | "refs";
@@ -34,7 +34,12 @@ interface PaneReviewProps {
 
 export function PaneReview({ initialPrId }: PaneReviewProps) {
   const [tab, setTab] = useState<ReviewTab>("prs");
-  const [selectedPr, setSelectedPr] = useState<number>(initialPrId ?? PRS[0]?.id ?? 0);
+  const { data: prs = [], refetch: refetchPrs, isFetching } = usePRs();
+  const { data: localChanges = [] } = useLocalChanges();
+  const mergeMut = useMergePR();
+  const commentMut = useCommentPR();
+  const reviewMut = useReviewPR();
+  const [selectedPr, setSelectedPr] = useState<number>(initialPrId ?? prs[0]?.id ?? 0);
   const [decision, setDecision] = useState<Record<number, Verdict>>({});
   const [modal, setModal] = useState<Modal_ | null>(null);
 
@@ -45,7 +50,14 @@ export function PaneReview({ initialPrId }: PaneReviewProps) {
     }
   }, [initialPrId]);
 
-  const pr = PRS.find((p) => p.id === selectedPr);
+  // Auto-select the first PR once the list arrives, if no explicit selection.
+  useEffect(() => {
+    if (!initialPrId && selectedPr === 0 && prs.length > 0) {
+      setSelectedPr(prs[0].id);
+    }
+  }, [prs, initialPrId, selectedPr]);
+
+  const pr = prs.find((p) => p.id === selectedPr);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -61,8 +73,14 @@ export function PaneReview({ initialPrId }: PaneReviewProps) {
         }
         right={
           <>
-            <Button variant="ghost" size="sm" icon={<I.Refresh size={12} />}>
-              Refresh PRs
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<I.Refresh size={12} />}
+              onClick={() => refetchPrs()}
+              disabled={isFetching}
+            >
+              {isFetching ? "Refreshing…" : "Refresh PRs"}
             </Button>
             <Button variant="default" size="sm" icon={<I.ExternalLink size={12} />}>
               Open on GitHub
@@ -79,13 +97,13 @@ export function PaneReview({ initialPrId }: PaneReviewProps) {
               value: "prs",
               label: "Pending PRs",
               icon: <I.GitPullReq size={13} />,
-              badge: PRS.length,
+              badge: prs.length,
             },
             {
               value: "local",
               label: "Local Working Changes",
               icon: <I.FilePencil size={13} />,
-              badge: LOCAL_CHANGES.length,
+              badge: localChanges.length,
             },
             { value: "refs", label: "Arbitrary Refs", icon: <I.Branch size={13} /> },
           ]}
@@ -102,7 +120,7 @@ export function PaneReview({ initialPrId }: PaneReviewProps) {
           }}
         >
           <PrList
-            prs={PRS}
+            prs={prs}
             selectedId={selectedPr}
             onSelect={setSelectedPr}
             decision={decision}
@@ -119,7 +137,7 @@ export function PaneReview({ initialPrId }: PaneReviewProps) {
 
       {tab === "local" && (
         <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
-          <LocalWorkingChanges changes={LOCAL_CHANGES} />
+          <LocalWorkingChanges changes={localChanges} />
         </div>
       )}
 
@@ -131,9 +149,34 @@ export function PaneReview({ initialPrId }: PaneReviewProps) {
 
       <ReviewActionModal
         modal={modal}
+        prs={prs}
         onClose={() => setModal(null)}
-        onSubmit={(verdict) => {
-          if (modal) setDecision((d) => ({ ...d, [modal.prId]: verdict }));
+        onSubmit={async (verdict, body) => {
+          if (!modal) return;
+          try {
+            if (modal.kind === "approve") {
+              await mergeMut.mutateAsync({ num: modal.prId, method: "squash" });
+            } else if (modal.kind === "comment") {
+              await commentMut.mutateAsync({ num: modal.prId, body });
+            } else if (modal.kind === "reject") {
+              await reviewMut.mutateAsync({
+                num: modal.prId,
+                verdict: "request",
+                body,
+              });
+            } else if (modal.kind === "changes") {
+              await reviewMut.mutateAsync({
+                num: modal.prId,
+                verdict: "request",
+                body,
+              });
+            }
+            setDecision((d) => ({ ...d, [modal.prId]: verdict }));
+          } catch (err) {
+            console.error("Review action failed:", err);
+            // surface error but keep modal open so user can retry
+            return;
+          }
           setModal(null);
         }}
       />
@@ -604,12 +647,14 @@ function RecRow({
 
 function ReviewActionModal({
   modal,
+  prs,
   onClose,
   onSubmit,
 }: {
   modal: Modal_ | null;
+  prs: PullRequest[];
   onClose: () => void;
-  onSubmit: (verdict: Verdict) => void;
+  onSubmit: (verdict: Verdict, body: string) => void;
 }) {
   const [comment, setComment] = useState("");
   useEffect(() => {
@@ -617,7 +662,7 @@ function ReviewActionModal({
       setComment("");
       return;
     }
-    const pr = PRS.find((p) => p.id === modal.prId);
+    const pr = prs.find((p) => p.id === modal.prId);
     if (!pr) return;
     if (modal.kind === "changes") {
       const lines = pr.recs
@@ -668,7 +713,7 @@ function ReviewActionModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant={c.variant} onClick={() => onSubmit(c.verdict)}>
+          <Button variant={c.variant} onClick={() => onSubmit(c.verdict, comment)}>
             {c.submit}
           </Button>
         </>

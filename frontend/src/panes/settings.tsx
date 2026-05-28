@@ -9,7 +9,8 @@ import {
   SeverityDot,
   Toolbar,
 } from "@/components";
-import { FED_ROOTS, PASCAL_EMITTER_URI } from "@/fixtures";
+import { PASCAL_EMITTER_URI } from "@/fixtures";
+import { useFederationRoots } from "@/api/hooks";
 
 type SettingSec = "identity" | "repo" | "vault" | "federation" | "lang" | "about";
 
@@ -189,6 +190,7 @@ function SettingsVault() {
 }
 
 function SettingsFederation() {
+  const { data: FED_ROOTS = [] } = useFederationRoots();
   return (
     <div>
       <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Federation roots</h2>
