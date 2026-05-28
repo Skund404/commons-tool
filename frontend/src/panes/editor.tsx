@@ -320,7 +320,7 @@ export function PaneEditor({ slug, fresh, fork, onFork, onDelete, go }: PaneEdit
       }
     }
     return out;
-  }, [p, remoteIssues]);
+  }, [p, remoteIssues, PRIMS]);
 
   const rejectCount = issues.filter((i) => i.sev === "reject").length;
   const warnCount = issues.filter((i) => i.sev === "warn").length;

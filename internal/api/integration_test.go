@@ -15,9 +15,35 @@ import (
 	"github.com/Skund404/commons-tool/internal/state"
 )
 
-// mockSrc is the canonical vault path. Tests copy from here into a tempdir
-// so each test gets an isolated corpus.
-const mockSrc = `F:\Rillmark\_Proto-Commons\mock`
+// mockSrc resolves the mock corpus location for integration tests. Order:
+//  1. $COMMONS_MOCK_PATH env var (CI sets this to the cloned proto-commons
+//     test-corpus checkout)
+//  2. <repo-root>/.cache/proto-commons (the location `make fetch-mock` uses)
+//  3. ../../Rillmark/_Proto-Commons/mock relative to this file (Pascal's vault)
+//
+// Tests that cannot resolve any of these locations skip rather than fail —
+// keeps the package green on a fresh clone without test data.
+func mockSrc(t *testing.T) string {
+	t.Helper()
+	if p := os.Getenv("COMMONS_MOCK_PATH"); p != "" {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	candidates := []string{
+		filepath.FromSlash("../../.cache/proto-commons"),
+		filepath.FromSlash(`F:\Rillmark\_Proto-Commons\mock`),
+		filepath.FromSlash("../../../Rillmark/_Proto-Commons/mock"),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			abs, _ := filepath.Abs(c)
+			return abs
+		}
+	}
+	t.Skip("mock corpus not found; set COMMONS_MOCK_PATH or run `make fetch-mock`")
+	return ""
+}
 
 // newIntegrationServer copies the mock corpus into a fresh tempdir, opens a
 // state store inside that dir, and returns a fully wired *Server plus the
@@ -26,7 +52,7 @@ func newIntegrationServer(t *testing.T) (*Server, string, *httptest.Server) {
 	t.Helper()
 	tmp := t.TempDir()
 	corpus := filepath.Join(tmp, "corpus")
-	if err := copyDir(mockSrc, corpus); err != nil {
+	if err := copyDir(mockSrc(t), corpus); err != nil {
 		t.Fatalf("seed corpus: %v", err)
 	}
 	st, err := state.Open(filepath.Join(tmp, "state.sqlite"))

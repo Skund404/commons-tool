@@ -14,10 +14,42 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The README's "make build" target does both.
 
 const REPO_ROOT = path.resolve(__dirname, "..");
-const COMMONS_BIN = path.join(REPO_ROOT, "dist", "commons.exe");
-// Vault is one level above the workspace root: /f/Rillmark/, not
-// /f/Rillmark-Workspace/Rillmark/.
-const MOCK_CORPUS = path.resolve(REPO_ROOT, "..", "..", "Rillmark", "_Proto-Commons", "mock");
+// Pick the right binary for the host. Cross-compiled artifacts share
+// `dist/`; the host-native one drops without an OS suffix on POSIX and
+// with `.exe` on Windows.
+const COMMONS_BIN = path.join(
+  REPO_ROOT,
+  "dist",
+  process.platform === "win32" ? "commons.exe" : "commons",
+);
+
+// Mock corpus lookup, in order of preference:
+//   1. $COMMONS_MOCK_PATH (CI sets this)
+//   2. <repo>/.cache/proto-commons (what `make fetch-mock` creates)
+//   3. ../../Rillmark/_Proto-Commons/mock (Pascal's vault path)
+function resolveMockCorpus(): string {
+  const fromEnv = process.env.COMMONS_MOCK_PATH;
+  if (fromEnv) return fromEnv;
+  const candidates = [
+    path.join(REPO_ROOT, ".cache", "proto-commons"),
+    path.resolve(REPO_ROOT, "..", "..", "Rillmark", "_Proto-Commons", "mock"),
+  ];
+  for (const c of candidates) {
+    try {
+      // Cheap existence check without an extra fs import — readdirSync is
+      // fine at config load time.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("node:fs").statSync(c);
+      return c;
+    } catch {
+      // try the next one
+    }
+  }
+  // No corpus found: return the first candidate so the error surfaces at
+  // run time with the right path in the message.
+  return candidates[0];
+}
+const MOCK_CORPUS = resolveMockCorpus();
 
 // Use 8439 to avoid colliding with the default dev port or any leftover
 // instance the user may have running.
