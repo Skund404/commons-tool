@@ -66,3 +66,5 @@ dist/
 frontend/test-results/
 frontend/playwright-report/
 frontend/playwright/.cache/
+test-results/
+playwright-report/
