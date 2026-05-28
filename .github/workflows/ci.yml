@@ -92,6 +92,13 @@ jobs:
     name: e2e / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     needs: [go, frontend]
+    # Make gh CLI work inside the running commons binary so /api/prs doesn't
+    # spawn auth-failing subprocesses for every request. Standard Actions
+    # pattern — the runner's GITHUB_TOKEN gives gh read access to PRs on this
+    # repo. Without this the server still works (fixture PRs are returned)
+    # but throughput collapses under the subprocess flood.
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
