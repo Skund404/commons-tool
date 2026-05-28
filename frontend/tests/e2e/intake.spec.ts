@@ -126,6 +126,109 @@ test.describe("intake pane", () => {
     expect(drafts.some((d) => d.slug === "bone-folder-import")).toBe(true);
   });
 
+  test("Stage all sequentially promotes every draft", async ({
+    page,
+    request,
+  }) => {
+    // Pre-seed two valid drafts via the API so we can focus on the bulk
+    // action UI without re-treading the paste/queue path.
+    await request.post("/api/drafts/primitives", {
+      data: {
+        slug: "bulk-stage-a",
+        kind: "tool",
+        name: "Bulk A",
+        emitter: "opg://1111aaaa-1111-aaaa-1111-aaaa1111aaaa",
+        license: "CC-BY-4.0",
+        names: { en: { canonical: "bulk a", aliases: [] } },
+        rel: [],
+        domain: { category: "test" },
+      },
+    });
+    await request.post("/api/drafts/primitives", {
+      data: {
+        slug: "bulk-stage-b",
+        kind: "tool",
+        name: "Bulk B",
+        emitter: "opg://2222bbbb-2222-bbbb-2222-bbbb2222bbbb",
+        license: "CC-BY-4.0",
+        names: { en: { canonical: "bulk b", aliases: [] } },
+        rel: [],
+        domain: { category: "test" },
+      },
+    });
+
+    await landOn(page);
+    await page.locator("nav").getByText("Intake", { exact: true }).click();
+    await expect(page.getByText("Bulk A")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Bulk B")).toBeVisible();
+
+    // Click "Stage all (2)" in the Drafts queue card header.
+    const stageAllBtn = page.getByRole("button", { name: /Stage all \(2\)/ });
+    await stageAllBtn.click();
+
+    // Wait until both /stage requests come back 201, then confirm the draft
+    // queue empties.
+    await page.waitForFunction(
+      async () => {
+        const res = await fetch("/api/drafts/primitives");
+        const list = (await res.json()) as Array<unknown>;
+        return list.length === 0;
+      },
+      undefined,
+      { timeout: 15_000 },
+    );
+    await expect(page.getByText("No drafts yet")).toBeVisible();
+
+    // Confirm both primitives now exist in the corpus and clean up.
+    for (const slug of ["bulk-stage-a", "bulk-stage-b"]) {
+      const res = await request.get(`/api/primitives/${slug}`);
+      expect(res.ok()).toBe(true);
+      await request.delete(`/api/primitives/${slug}`);
+    }
+  });
+
+  test("dropping a .json file populates the textarea", async ({ page }) => {
+    await landOn(page);
+    await page.locator("nav").getByText("Intake", { exact: true }).click();
+
+    const fileContent = `{
+      "slug": "dropped-primitive",
+      "kind": "tool",
+      "name": "Dropped",
+      "emitter": "opg://3333cccc-3333-cccc-3333-cccc3333cccc",
+      "license": "CC-BY-4.0",
+      "names": { "en": { "canonical": "dropped", "aliases": [] } },
+      "rel": [],
+      "domain": {}
+    }`;
+
+    // Simulate a drop on the textarea wrapper by dispatching a real
+    // DragEvent with a DataTransfer carrying the file. Playwright's
+    // dispatchEvent helper accepts a serializable description.
+    const textarea = page.getByPlaceholder(/Paste here/);
+    const wrapper = textarea.locator(".."); // the onDrop handler is on the wrapper div
+
+    const dataTransfer = await page.evaluateHandle((content) => {
+      const dt = new DataTransfer();
+      const file = new File([content], "primitive.json", { type: "application/json" });
+      dt.items.add(file);
+      return dt;
+    }, fileContent);
+
+    await wrapper.dispatchEvent("drop", { dataTransfer });
+
+    // Textarea should now contain the file content.
+    await expect(textarea).toHaveValue(/dropped-primitive/);
+    // And Parse should work on it like any other paste.
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes("/api/intake/parse") && r.status() === 200,
+      ),
+      page.getByRole("button", { name: /^Parse$/ }).click(),
+    ]);
+    await expect(page.getByText(/Preview · 1 ok · 0 error/)).toBeVisible();
+  });
+
   test("Discard removes the draft", async ({ page, request }) => {
     // Pre-seed a draft via API so the test focuses on UI behavior.
     await request.post("/api/drafts/primitives", {

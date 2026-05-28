@@ -37,6 +37,8 @@ export function PaneIntake({ go }: PaneProps) {
   const [text, setText] = useState("");
   const [items, setItems] = useState<IntakeItem[]>([]);
   const [included, setIncluded] = useState<Set<number>>(new Set());
+  const [dragOver, setDragOver] = useState(false);
+  const [stagingAll, setStagingAll] = useState(false);
   const [banner, setBanner] = useState<{
     kind: "ok" | "warn" | "err";
     msg: string;
@@ -118,6 +120,63 @@ export function PaneIntake({ go }: PaneProps) {
     }
   }
 
+  async function handleStageAll() {
+    if (drafts.length === 0) {
+      flash("warn", "No drafts to stage.");
+      return;
+    }
+    setStagingAll(true);
+    let staged = 0;
+    let failed = 0;
+    const failures: string[] = [];
+    // Sequential: each stage rebuilds indexes, so parallelism could thrash
+    // the corpus. The serial cost (~50-100ms per draft) is acceptable.
+    for (const d of drafts) {
+      try {
+        await stageMut.mutateAsync(d.id);
+        staged++;
+      } catch (e) {
+        failed++;
+        failures.push(`${d.slug ?? d.id}: ${(e as Error).message}`);
+      }
+    }
+    setStagingAll(false);
+    if (failed === 0) {
+      flash("ok", `Staged ${staged} draft${staged === 1 ? "" : "s"}`);
+    } else {
+      flash(
+        "warn",
+        `Staged ${staged}; ${failed} failed (kept as drafts). First: ${failures[0]?.slice(0, 100) ?? ""}`,
+      );
+    }
+    refetchDrafts();
+  }
+
+  // Drop-zone: read .json files, concat with --- so the multi-doc parser
+  // handles them, and append to whatever's already in the textarea so the
+  // maintainer can stack pastes + drops in one session.
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter((f) =>
+      /\.(json|ndjson|txt)$/i.test(f.name),
+    );
+    if (files.length === 0) {
+      flash("warn", "Drop .json, .ndjson, or .txt files (no other types accepted).");
+      return;
+    }
+    try {
+      const parts = await Promise.all(files.map((f) => f.text()));
+      const combined = parts.length === 1 ? parts[0] : parts.join("\n---\n");
+      setText((prev) =>
+        prev.trim() ? prev.trimEnd() + "\n---\n" + combined : combined,
+      );
+      flash("ok", `Loaded ${files.length} file${files.length === 1 ? "" : "s"}`);
+    } catch (e) {
+      flash("err", "Read failed: " + (e as Error).message);
+    }
+  }
+
   async function handleValidateDraft(d: DraftEnvelope) {
     try {
       const result = await validateMut.mutateAsync(d.id);
@@ -178,25 +237,61 @@ export function PaneIntake({ go }: PaneProps) {
           padded={false}
         >
           <div style={{ padding: 12 }}>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder='Paste here — e.g. {"slug":"french-skiver","kind":"tool", ...}  or  [{...}, {...}]'
-              spellCheck={false}
-              style={{
-                width: "100%",
-                minHeight: 200,
-                padding: 10,
-                background: "var(--surface)",
-                border: "1px solid var(--line-2)",
-                borderRadius: 5,
-                outline: 0,
-                fontFamily: "var(--font-mono)",
-                fontSize: 12,
-                color: "var(--ink)",
-                resize: "vertical",
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
               }}
-            />
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              style={{
+                position: "relative",
+                borderRadius: 5,
+                outline: dragOver ? "2px dashed var(--accent)" : "0",
+                outlineOffset: dragOver ? -2 : 0,
+                transition: "outline 120ms",
+              }}
+            >
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder='Paste here — e.g. {"slug":"french-skiver","kind":"tool", ...}  or  [{...}, {...}]    (or drop .json files)'
+                spellCheck={false}
+                style={{
+                  width: "100%",
+                  minHeight: 200,
+                  padding: 10,
+                  background: "var(--surface)",
+                  border: "1px solid var(--line-2)",
+                  borderRadius: 5,
+                  outline: 0,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 12,
+                  color: "var(--ink)",
+                  resize: "vertical",
+                  display: "block",
+                }}
+              />
+              {dragOver && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "var(--accent)",
+                    background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+                    borderRadius: 5,
+                    pointerEvents: "none",
+                  }}
+                >
+                  Drop .json files to load
+                </div>
+              )}
+            </div>
             <div
               style={{
                 display: "flex",
@@ -275,14 +370,30 @@ export function PaneIntake({ go }: PaneProps) {
           subtitle="Pasted, unsaved candidates. Edit / Validate / Stage / Discard per row."
           padded={false}
           action={
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<I.Refresh size={12} />}
-              onClick={() => refetchDrafts()}
-            >
-              Refresh
-            </Button>
+            <div style={{ display: "flex", gap: 6 }}>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<I.Refresh size={12} />}
+                onClick={() => refetchDrafts()}
+              >
+                Refresh
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<I.Upload size={12} />}
+                onClick={handleStageAll}
+                disabled={drafts.length === 0 || stagingAll}
+                title="Stage every draft sequentially. Drafts that fail validation stay queued so you can edit and retry."
+              >
+                {stagingAll
+                  ? "Staging…"
+                  : drafts.length > 0
+                    ? `Stage all (${drafts.length})`
+                    : "Stage all"}
+              </Button>
+            </div>
           }
         >
           {drafts.length === 0 ? (
