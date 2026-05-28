@@ -6,6 +6,7 @@ package api
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 
 	"github.com/Skund404/commons-tool/internal/indexer"
@@ -14,7 +15,8 @@ import (
 
 // NewRouter returns an http.Handler wired with the v1 API routes. corpusRoot
 // is the absolute path to a Proto-Commons corpus the server should serve.
-func NewRouter(corpusRoot string) http.Handler {
+// frontendFS is the (optional) embedded React UI; pass nil to serve API only.
+func NewRouter(corpusRoot string, frontendFS fs.FS) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +60,9 @@ func NewRouter(corpusRoot string) http.Handler {
 		writeJSON(w, http.StatusOK, indexer.BuildTaxonomyIndexes(corpus))
 	})
 
+	if frontendFS != nil {
+		mux.Handle("/", http.FileServer(http.FS(frontendFS)))
+	}
 	return cors(mux)
 }
 

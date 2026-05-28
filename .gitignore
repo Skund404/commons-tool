@@ -55,3 +55,9 @@ coverage/
 *.tsbuildinfo
 frontend/vite.config.d.ts
 frontend/vite.config.js
+
+# Embedded frontend artifacts staged into the Go binary at build time.
+# Keep the .gitkeep so //go:embed has a valid (empty) target on fresh clones.
+cmd/commons/frontend_dist/*
+!cmd/commons/frontend_dist/.gitkeep
+dist/

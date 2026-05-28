@@ -1,0 +1,3 @@
+# Placeholder so the //go:embed directive in cmd/commons/frontend.go has a valid
+# target even before `npm run build && cp -r frontend/dist/* .` populates the
+# directory. The real assets land here via the Makefile's `embed-frontend` target.

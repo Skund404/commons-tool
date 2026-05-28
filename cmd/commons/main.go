@@ -291,9 +291,14 @@ func runServer(args []string) int {
 		return 1
 	}
 
+	frontFS, ferr := frontendRoot()
+	if ferr != nil {
+		fmt.Fprintln(os.Stderr, "serve: frontend embed unavailable, serving API only:", ferr)
+		frontFS = nil
+	}
 	srv := &http.Server{
 		Addr:              fmt.Sprintf("127.0.0.1:%d", *port),
-		Handler:           api.NewRouter(root),
+		Handler:           api.NewRouter(root, frontFS),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
