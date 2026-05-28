@@ -61,3 +61,8 @@ frontend/vite.config.js
 cmd/commons/frontend_dist/*
 !cmd/commons/frontend_dist/.gitkeep
 dist/
+
+# Playwright e2e artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
