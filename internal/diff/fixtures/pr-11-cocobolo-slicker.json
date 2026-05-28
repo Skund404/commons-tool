@@ -1,0 +1,92 @@
+{
+  "id": 11,
+  "title": "Add edge-slicker + cocobolo specialization",
+  "author": "ortega-leather",
+  "author_meta": "12 prior contributions",
+  "branch": "contrib/cocobolo-slicker",
+  "age": "8 hours ago",
+  "files": [
+    { "op": "+", "path": "primitives/tools/edge-slicker.json", "added": 28, "removed": 0 },
+    { "op": "+", "path": "primitives/tools/cocobolo-slicker.json", "added": 32, "removed": 0 },
+    { "op": "M", "path": "indexes/taxonomy/en.json", "added": 8, "removed": 0 }
+  ],
+  "semantic": [
+    "New tool primitive: edge-slicker",
+    "New tool primitive: cocobolo-slicker, specializes edge-slicker",
+    "Taxonomy depth increases to 3 under tool > finishing"
+  ],
+  "proposed": {
+    "added_primitives": [
+      {
+        "path": "primitives/tools/edge-slicker.json",
+        "doc": {
+          "opgl_version": "0.6",
+          "emitter": "opg://7c2e8a91-3b4f-d1c2-aa05-9d8e1f3c2b6a",
+          "id": "edge-slicker-001",
+          "slug": "edge-slicker",
+          "kind": "tool",
+          "name": "Edge Slicker",
+          "description": "Hardwood or canvas slicker used to burnish and seal leather edges.",
+          "visibility": "commons",
+          "created": "2026-05-28",
+          "tags": ["finishing", "burnishing", "leather"],
+          "properties": {
+            "category": "finishing",
+            "status": "active",
+            "license": "CC-BY-4.0",
+            "persistent": true,
+            "names": {
+              "en": ["edge slicker", "burnisher"],
+              "de": ["Kantenpolierer"],
+              "fr": ["polissoir"]
+            }
+          },
+          "lineage": {
+            "provenance_state": "unasserted",
+            "outcome": "unknown"
+          }
+        }
+      },
+      {
+        "path": "primitives/tools/cocobolo-slicker.json",
+        "doc": {
+          "opgl_version": "0.6",
+          "emitter": "opg://7c2e8a91-3b4f-d1c2-aa05-9d8e1f3c2b6a",
+          "id": "cocobolo-slicker-001",
+          "slug": "cocobolo-slicker",
+          "kind": "tool",
+          "name": "Cocobolo Edge Slicker",
+          "description": "Edge slicker turned from cocobolo hardwood. Hard, dense, polishes leather edges to a glossy finish.",
+          "visibility": "commons",
+          "created": "2026-05-28",
+          "tags": ["finishing", "burnishing", "leather", "cocobolo"],
+          "properties": {
+            "category": "finishing",
+            "status": "active",
+            "license": "CC-BY-4.0",
+            "persistent": true,
+            "names": {
+              "en": ["cocobolo slicker", "cocobolo edge slicker"],
+              "de": ["Cocobolo-Kantenpolierer"],
+              "fr": ["polissoir cocobolo"]
+            }
+          },
+          "relationships": [
+            {
+              "type": "specializes",
+              "target": {
+                "id": "edge-slicker-001",
+                "hash": "sha256:PLACEHOLDER_EDGE_SLICKER",
+                "path": "primitives/tools/edge-slicker.json"
+              }
+            }
+          ],
+          "lineage": {
+            "provenance_state": "unasserted",
+            "outcome": "unknown"
+          }
+        }
+      }
+    ]
+  }
+}

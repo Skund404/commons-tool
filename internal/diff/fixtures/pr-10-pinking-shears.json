@@ -1,0 +1,52 @@
+{
+  "id": 10,
+  "title": "Add `pinking-shears` technique (mis-classified)",
+  "author": "drwilbert",
+  "author_meta": "3 prior contributions",
+  "branch": "contrib/pinking-shears",
+  "age": "1 day ago",
+  "files": [
+    { "op": "+", "path": "primitives/techniques/pinking-shears.json", "added": 41, "removed": 0 }
+  ],
+  "semantic": [
+    "New technique primitive: pinking-shears",
+    "Cross-domain primitive (textiles), kind mismatch suspected"
+  ],
+  "proposed": {
+    "added_primitives": [
+      {
+        "path": "primitives/techniques/pinking-shears.json",
+        "doc": {
+          "opgl_version": "0.6",
+          "emitter": "opg://1d2c3b4a-5f6e-7d8c-9b0a-1f2e3d4c5b6a",
+          "id": "pinking-shears-001",
+          "slug": "pinking-shears",
+          "kind": "technique",
+          "name": "Pinking Shears",
+          "description": "Specialized scissors with serrated blades that leave a zig-zag cut, traditionally used in textile work.",
+          "visibility": "commons",
+          "created": "2026-05-28",
+          "tags": ["textile", "cutting", "shears"],
+          "properties": {
+            "category": "cutting",
+            "manufacturer": "Fiskars",
+            "sku": "PS-9",
+            "model_number": "9",
+            "status": "active",
+            "license": "CC-BY-4.0",
+            "persistent": true,
+            "names": {
+              "en": ["pinking shears", "pinking scissors"],
+              "de": ["Zackenschere"],
+              "fr": ["ciseaux à cranter"]
+            }
+          },
+          "lineage": {
+            "provenance_state": "unasserted",
+            "outcome": "unknown"
+          }
+        }
+      }
+    ]
+  }
+}

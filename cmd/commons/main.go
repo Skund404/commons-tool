@@ -20,8 +20,12 @@ import (
 	"time"
 
 	"github.com/Skund404/commons-tool/internal/api"
+	"github.com/Skund404/commons-tool/internal/federation"
+	gh "github.com/Skund404/commons-tool/internal/github"
 	"github.com/Skund404/commons-tool/internal/indexer"
+	"github.com/Skund404/commons-tool/internal/keychain"
 	"github.com/Skund404/commons-tool/internal/schema"
+	"github.com/Skund404/commons-tool/internal/state"
 	"github.com/Skund404/commons-tool/internal/version"
 )
 
@@ -281,6 +285,8 @@ func runServer(args []string) int {
 	port := fs.Int("port", 8430, "port to bind on 127.0.0.1")
 	noBrowser := fs.Bool("no-browser", false, "do not open the browser on start")
 	mockDir := fs.String("mock", "../Rillmark/_Proto-Commons/mock", "path to a corpus root the server should serve")
+	suggestionsDir := fs.String("suggestions", "../Rillmark/_Proto-Commons/suggestions", "path to the vault suggestions/ directory")
+	commitMerge := fs.Bool("commit-merge", false, "actually run gh pr merge (default: dry-run, prints only)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -296,9 +302,32 @@ func runServer(args []string) int {
 		fmt.Fprintln(os.Stderr, "serve: frontend embed unavailable, serving API only:", ferr)
 		frontFS = nil
 	}
+
+	srv2 := api.NewServer(root, *suggestionsDir)
+	srv2.FrontendFS = frontFS
+
+	// State (best-effort — if SQLite open fails we degrade to no persistence).
+	if st, err := state.Open(""); err == nil {
+		srv2.State = st
+		defer st.Close()
+	} else {
+		fmt.Fprintln(os.Stderr, "warn: state store unavailable:", err)
+	}
+
+	srv2.Keychain = keychain.Default()
+
+	if mgr, err := federation.New(""); err == nil {
+		srv2.Federation = mgr
+	} else {
+		fmt.Fprintln(os.Stderr, "warn: federation manager unavailable:", err)
+	}
+
+	srv2.GitHub = gh.New("", !*commitMerge, gh.TokenFromGh)
+	srv2.GitHub.Log = os.Stderr
+
 	srv := &http.Server{
 		Addr:              fmt.Sprintf("127.0.0.1:%d", *port),
-		Handler:           api.NewRouter(root, frontFS),
+		Handler:           srv2.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

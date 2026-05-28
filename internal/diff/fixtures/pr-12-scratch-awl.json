@@ -1,0 +1,62 @@
+{
+  "id": 12,
+  "title": "Add scratch awl",
+  "author": "somemaker",
+  "author_meta": "first-time contributor",
+  "branch": "contrib/scratch-awl",
+  "age": "2 hours ago",
+  "files": [
+    { "op": "+", "path": "primitives/tools/scratch-awl.json", "added": 38, "removed": 0 },
+    { "op": "M", "path": "indexes/resolve/en.json", "added": 2, "removed": 0 },
+    { "op": "M", "path": "indexes/resolve/de.json", "added": 2, "removed": 0 }
+  ],
+  "semantic": [
+    "New tool primitive: scratch-awl",
+    "Resolve indexes will regenerate cleanly",
+    "Specializes existing primitive `awl`"
+  ],
+  "proposed": {
+    "added_primitives": [
+      {
+        "path": "primitives/tools/scratch-awl.json",
+        "doc": {
+          "opgl_version": "0.6",
+          "emitter": "opg://9a3f6b21-4d8e-c7a0-bb5e-1f2d8a4c6e9b",
+          "id": "scratch-awl-001",
+          "slug": "scratch-awl",
+          "kind": "tool",
+          "name": "Scratch Awl",
+          "description": "Pointed awl with a sharpened tip for surface marking on leather.",
+          "visibility": "commons",
+          "created": "2026-05-28",
+          "tags": ["piercing", "marking"],
+          "properties": {
+            "category": "piercing",
+            "status": "active",
+            "license": "CC-BY-4.0",
+            "persistent": true,
+            "names": {
+              "en": ["scratch awl", "awl"],
+              "de": ["Reißahle", "Ahle"],
+              "fr": ["alène à tracer"]
+            }
+          },
+          "relationships": [
+            {
+              "type": "specializes",
+              "target": {
+                "id": "awl-mock",
+                "hash": "sha256:000000000000000000000000000000000000000000000000000000000000000a",
+                "path": "primitives/tools/awl.json"
+              }
+            }
+          ],
+          "lineage": {
+            "provenance_state": "unasserted",
+            "outcome": "unknown"
+          }
+        }
+      }
+    ]
+  }
+}
