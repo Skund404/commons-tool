@@ -18,6 +18,8 @@ import {
 } from "@/components";
 import { PASCAL_EMITTER_URI } from "@/fixtures";
 import { usePrimitives } from "@/api/hooks";
+import type { PaneArgs } from "@/shell/pane-switch";
+import type { PaneId } from "@/nav";
 import type {
   Outcome,
   Primitive,
@@ -36,6 +38,7 @@ interface PaneEditorProps {
   fork?: string;
   onFork?: (id: string) => void;
   onDelete?: () => void;
+  go?: (id: PaneId, args?: PaneArgs) => void;
 }
 
 interface Issue {
@@ -65,8 +68,19 @@ const SCRATCH_AWL_TEMPLATE: Primitive = {
   domain: { category: "piercing", manufacturer: "" },
 };
 
-export function PaneEditor({ slug, fresh, fork, onFork, onDelete }: PaneEditorProps) {
+export function PaneEditor({ slug, fresh, fork, onFork, onDelete, go }: PaneEditorProps) {
   const { data: PRIMS = [] } = usePrimitives();
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSwitcherOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const start = useMemo<Primitive>(() => {
     if (fork) {
       const source = PRIMS.find((p) => p.id === fork);
@@ -176,13 +190,43 @@ export function PaneEditor({ slug, fresh, fork, onFork, onDelete }: PaneEditorPr
         left={
           <>
             <KindGlyph kind={p.kind} size={16} />
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => setSwitcherOpen(true)}
+              title="Switch primitive (also: ⌘K)"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "transparent",
+                border: 0,
+                padding: "2px 4px",
+                margin: "-2px -4px",
+                borderRadius: 4,
+                cursor: "pointer",
+                color: "inherit",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
               <span style={{ fontWeight: 600 }}>{p.name || "(untitled)"}</span>
               <StateBadge s={p.state} />
-            </div>
+              <I.ChevDown size={12} style={{ color: "var(--ink-3)" }} />
+            </button>
             <span className="mono" style={{ color: "var(--ink-4)", fontSize: 12 }}>
               {p.slug}
             </span>
+            {go && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<I.ChevLeft size={12} />}
+                onClick={() => go("browser")}
+                title="Back to browse"
+              >
+                Browse
+              </Button>
+            )}
           </>
         }
         right={
@@ -570,6 +614,18 @@ export function PaneEditor({ slug, fresh, fork, onFork, onDelete }: PaneEditorPr
         onConfirm={() => {
           setConfirmDelete(false);
           onDelete?.();
+        }}
+      />
+
+      <PrimitiveSwitcherModal
+        open={switcherOpen}
+        currentSlug={p.slug}
+        onClose={() => setSwitcherOpen(false)}
+        onPick={(picked) => {
+          setSwitcherOpen(false);
+          if (go) {
+            go("editor", { slug: picked.id });
+          }
         }}
       />
     </div>
@@ -1220,6 +1276,146 @@ function RelList({
         })
       )}
     </div>
+  );
+}
+
+function PrimitiveSwitcherModal({
+  open,
+  currentSlug,
+  onClose,
+  onPick,
+}: {
+  open: boolean;
+  currentSlug: string;
+  onClose: () => void;
+  onPick: (p: Primitive) => void;
+}) {
+  const { data: PRIMS = [] } = usePrimitives();
+  const [q, setQ] = useState("");
+  const [focusIdx, setFocusIdx] = useState(0);
+
+  useEffect(() => {
+    if (open) {
+      setQ("");
+      setFocusIdx(0);
+    }
+  }, [open]);
+
+  const filtered = PRIMS.filter(
+    (p) =>
+      !q ||
+      p.name.toLowerCase().includes(q.toLowerCase()) ||
+      p.slug.includes(q.toLowerCase()),
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setFocusIdx((i) => Math.min(filtered.length - 1, i + 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setFocusIdx((i) => Math.max(0, i - 1));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const p = filtered[focusIdx];
+        if (p) onPick(p);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, filtered, focusIdx, onPick]);
+
+  if (!open) return null;
+  return (
+    <Modal open={open} onClose={onClose} title="Switch primitive" width={520}>
+      <Input
+        leadingIcon={<I.Search size={12} />}
+        placeholder="Search by name or slug…"
+        autoFocus
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setFocusIdx(0);
+        }}
+      />
+      <div
+        style={{
+          marginTop: 10,
+          maxHeight: 320,
+          overflowY: "auto",
+          border: "1px solid var(--line)",
+          borderRadius: 5,
+          background: "var(--surface)",
+        }}
+      >
+        {filtered.length === 0 ? (
+          <div style={{ padding: 18, textAlign: "center", color: "var(--ink-3)", fontSize: 12 }}>
+            No primitives match.
+          </div>
+        ) : (
+          filtered.map((p, i) => {
+            const isCurrent = p.slug === currentSlug;
+            const isFocused = i === focusIdx;
+            const Ico = KIND_ICON[p.kind] ?? I.File;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onPick(p)}
+                onMouseEnter={() => setFocusIdx(i)}
+                style={{
+                  display: "grid",
+                  width: "100%",
+                  gridTemplateColumns: "20px 1fr auto",
+                  gap: 10,
+                  alignItems: "center",
+                  padding: "8px 10px",
+                  borderTop: i === 0 ? 0 : "1px solid var(--line)",
+                  background: isFocused ? "var(--surface-2)" : "transparent",
+                  border: 0,
+                  borderLeft: isFocused ? "2px solid var(--accent)" : "2px solid transparent",
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <Ico size={14} style={{ color: "var(--ink-3)" }} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</div>
+                  <div className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                    {p.slug}
+                  </div>
+                </div>
+                {isCurrent ? (
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 9,
+                      padding: "1px 5px",
+                      background: "var(--surface-2)",
+                      color: "var(--ink-3)",
+                      borderRadius: 3,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.6,
+                    }}
+                  >
+                    Current
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--ink-3)" }}>
+                    <I.ChevRight size={12} />
+                  </span>
+                )}
+              </button>
+            );
+          })
+        )}
+      </div>
+      <div style={{ marginTop: 8, fontSize: 11, color: "var(--ink-3)" }}>
+        Use ↑ / ↓ to navigate, Enter to switch.
+      </div>
+    </Modal>
   );
 }
 

@@ -17,7 +17,15 @@ import {
   Toolbar,
 } from "@/components";
 import { usePRs, useLocalChanges, useMergePR, useCommentPR, useReviewPR } from "@/api/hooks";
+import type { PaneArgs } from "@/shell/pane-switch";
+import type { PaneId } from "@/nav";
 import type { LocalChange, PrimitiveKind, PullRequest, Recommendation, Severity } from "@/types/primitives";
+
+// Extract the primitive slug from a primitives/<kind>/<slug>.json path.
+function slugFromPrimitivePath(path: string): string | null {
+  const m = path.match(/^primitives\/[^/]+\/([^/]+)\.json$/);
+  return m ? m[1] : null;
+}
 
 type ReviewTab = "prs" | "local" | "refs";
 type Verdict = "approved" | "rejected" | "changes-requested" | "commented";
@@ -30,9 +38,10 @@ interface Modal_ {
 
 interface PaneReviewProps {
   initialPrId?: number;
+  go?: (id: PaneId, args?: PaneArgs) => void;
 }
 
-export function PaneReview({ initialPrId }: PaneReviewProps) {
+export function PaneReview({ initialPrId, go }: PaneReviewProps) {
   const [tab, setTab] = useState<ReviewTab>("prs");
   const { data: prs = [], refetch: refetchPrs, isFetching } = usePRs();
   const { data: localChanges = [] } = useLocalChanges();
@@ -130,6 +139,11 @@ export function PaneReview({ initialPrId }: PaneReviewProps) {
               pr={pr}
               decision={decision[pr.id]}
               onAction={(kind) => setModal({ kind, prId: pr.id })}
+              onOpenInEditor={
+                go
+                  ? (slug) => go("editor", { slug })
+                  : undefined
+              }
             />
           )}
         </div>
@@ -137,7 +151,14 @@ export function PaneReview({ initialPrId }: PaneReviewProps) {
 
       {tab === "local" && (
         <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
-          <LocalWorkingChanges changes={localChanges} />
+          <LocalWorkingChanges
+            changes={localChanges}
+            onOpenInEditor={
+              go
+                ? (slug) => go("editor", { slug })
+                : undefined
+            }
+          />
         </div>
       )}
 
@@ -295,10 +316,12 @@ function PrDetail({
   pr,
   decision,
   onAction,
+  onOpenInEditor,
 }: {
   pr: PullRequest;
   decision: Verdict | undefined;
   onAction: (kind: ActionKind) => void;
+  onOpenInEditor?: (slug: string) => void;
 }) {
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set([0]));
   const toggle = (i: number) =>
@@ -382,42 +405,58 @@ function PrDetail({
 
       <div style={{ padding: "16px 20px 0" }}>
         <Card title={`Files changed · ${pr.files.length}`} padded={false}>
-          {pr.files.map((f, i) => (
-            <div
-              key={i}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "20px 1fr auto",
-                alignItems: "center",
-                padding: "7px 12px",
-                borderTop: i === 0 ? "0" : "1px solid var(--line)",
-                gap: 8,
-              }}
-            >
-              <span
-                className="mono"
+          {pr.files.map((f, i) => {
+            const primSlug = slugFromPrimitivePath(f.path);
+            return (
+              <div
+                key={i}
                 style={{
-                  fontWeight: 700,
-                  fontSize: 12,
-                  color:
-                    f.op === "+"
-                      ? "var(--sev-approve)"
-                      : f.op === "M"
-                        ? "var(--sev-warn)"
-                        : "var(--sev-reject)",
+                  display: "grid",
+                  gridTemplateColumns: "20px 1fr auto auto",
+                  alignItems: "center",
+                  padding: "7px 12px",
+                  borderTop: i === 0 ? "0" : "1px solid var(--line)",
+                  gap: 8,
                 }}
               >
-                {f.op}
-              </span>
-              <span className="mono" style={{ fontSize: 12, color: "var(--ink)" }}>
-                {f.path}
-              </span>
-              <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
-                <span style={{ color: "var(--sev-approve)" }}>+{f.added}</span>{" "}
-                <span style={{ color: "var(--sev-reject)" }}>−{f.removed}</span>
-              </span>
-            </div>
-          ))}
+                <span
+                  className="mono"
+                  style={{
+                    fontWeight: 700,
+                    fontSize: 12,
+                    color:
+                      f.op === "+"
+                        ? "var(--sev-approve)"
+                        : f.op === "M"
+                          ? "var(--sev-warn)"
+                          : "var(--sev-reject)",
+                  }}
+                >
+                  {f.op}
+                </span>
+                <span className="mono" style={{ fontSize: 12, color: "var(--ink)" }}>
+                  {f.path}
+                </span>
+                <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                  <span style={{ color: "var(--sev-approve)" }}>+{f.added}</span>{" "}
+                  <span style={{ color: "var(--sev-reject)" }}>−{f.removed}</span>
+                </span>
+                {primSlug && onOpenInEditor ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<I.EditPen size={11} />}
+                    onClick={() => onOpenInEditor(primSlug)}
+                    title="Open this primitive in the editor"
+                  >
+                    Edit
+                  </Button>
+                ) : (
+                  <span />
+                )}
+              </div>
+            );
+          })}
         </Card>
       </div>
 
@@ -450,7 +489,14 @@ function PrDetail({
           padded={false}
         >
           {pr.recs.map((r, i) => (
-            <RecRow key={i} r={r} first={i === 0} open={expanded.has(i)} onToggle={() => toggle(i)} />
+            <RecRow
+              key={i}
+              r={r}
+              first={i === 0}
+              open={expanded.has(i)}
+              onToggle={() => toggle(i)}
+              onOpenInEditor={onOpenInEditor}
+            />
           ))}
         </Card>
       </div>
@@ -540,11 +586,13 @@ function RecRow({
   first,
   open,
   onToggle,
+  onOpenInEditor,
 }: {
   r: Recommendation;
   first: boolean;
   open: boolean;
   onToggle: () => void;
+  onOpenInEditor?: (slug: string) => void;
 }) {
   const s = SEV[r.sev];
   return (
@@ -608,13 +656,28 @@ function RecRow({
               }}
             >
               <I.File size={12} style={{ color: "var(--ink-3)" }} />
-              <span className="mono">{r.file}</span>
+              <span className="mono" style={{ flex: 1, minWidth: 0 }}>{r.file}</span>
               {r.hash && (
                 <>
                   <span style={{ color: "var(--ink-4)" }}>·</span>
                   <Hash value={r.hash} />
                 </>
               )}
+              {(() => {
+                const slug = slugFromPrimitivePath(r.file);
+                if (!slug || !onOpenInEditor) return null;
+                return (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<I.EditPen size={11} />}
+                    onClick={() => onOpenInEditor(slug)}
+                    title="Open this primitive in the editor"
+                  >
+                    Edit
+                  </Button>
+                );
+              })()}
             </div>
           )}
           {r.suggest && (
@@ -770,7 +833,13 @@ function ReviewActionModal({
   );
 }
 
-function LocalWorkingChanges({ changes }: { changes: LocalChange[] }) {
+function LocalWorkingChanges({
+  changes,
+  onOpenInEditor,
+}: {
+  changes: LocalChange[];
+  onOpenInEditor?: (slug: string) => void;
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Card
@@ -788,6 +857,11 @@ function LocalWorkingChanges({ changes }: { changes: LocalChange[] }) {
             f.kind === "index" || f.kind === "bundle"
               ? I.File
               : KIND_ICON[f.kind as PrimitiveKind] ?? I.File;
+          const isPrimitive =
+            f.kind === "tool" ||
+            f.kind === "material" ||
+            f.kind === "technique" ||
+            f.kind === "workflow";
           return (
             <div
               key={i}
@@ -821,9 +895,20 @@ function LocalWorkingChanges({ changes }: { changes: LocalChange[] }) {
               </div>
               <StateBadge s={f.state} />
               <div style={{ textAlign: "right" }}>
-                <Button variant="ghost" size="sm">
-                  Diff →
-                </Button>
+                {isPrimitive && onOpenInEditor && f.slug && f.slug !== "—" ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<I.EditPen size={11} />}
+                    onClick={() => onOpenInEditor(f.slug)}
+                  >
+                    Edit
+                  </Button>
+                ) : (
+                  <Button variant="ghost" size="sm">
+                    Diff →
+                  </Button>
+                )}
               </div>
             </div>
           );

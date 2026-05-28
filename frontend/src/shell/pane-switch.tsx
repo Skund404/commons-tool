@@ -33,6 +33,7 @@ export function PaneSwitch({ pane, paneState, go }: PaneSwitchProps) {
       const args = paneState.editor ?? {};
       return (
         <PaneEditor
+          go={go}
           slug={args.slug}
           fresh={args.fresh}
           fork={args.fork}
@@ -52,7 +53,7 @@ export function PaneSwitch({ pane, paneState, go }: PaneSwitchProps) {
     case "federation":
       return <PaneFederation />;
     case "review":
-      return <PaneReview initialPrId={paneState.review?.prId} />;
+      return <PaneReview go={go} initialPrId={paneState.review?.prId} />;
     case "settings":
       return <PaneSettings />;
     default:
