@@ -15,7 +15,7 @@ import type {
   Suggestion,
 } from "@/types/primitives";
 
-// ─────────── primitives ───────────
+// ─────────── primitives (read) ───────────
 
 export function usePrimitives() {
   return useQuery({
@@ -29,6 +29,150 @@ export function usePrimitive(slug: string | null) {
     queryKey: ["primitive", slug],
     queryFn: () => api.get<Primitive>(`/api/primitives/${slug}`),
     enabled: !!slug,
+  });
+}
+
+// ─────────── primitives (write) ───────────
+
+export interface IntegrationResult {
+  primitive: Record<string, unknown>;
+  ui: Primitive;
+  warnings?: string[];
+}
+
+function invalidateCorpusViews(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["primitives"] });
+  qc.invalidateQueries({ queryKey: ["indexes"] });
+  qc.invalidateQueries({ queryKey: ["taxonomy"] });
+  qc.invalidateQueries({ queryKey: ["status"] });
+}
+
+export function useCreatePrimitive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<Primitive>) =>
+      api.post<IntegrationResult>("/api/primitives", body),
+    onSuccess: () => invalidateCorpusViews(qc),
+  });
+}
+
+export function useUpdatePrimitive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, body }: { slug: string; body: Partial<Primitive> }) =>
+      api.put<IntegrationResult>(`/api/primitives/${slug}`, body),
+    onSuccess: () => invalidateCorpusViews(qc),
+  });
+}
+
+export function useDeletePrimitive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      api.del<{ ok: boolean; deleted: string }>(`/api/primitives/${slug}`),
+    onSuccess: () => invalidateCorpusViews(qc),
+  });
+}
+
+export function useForkPrimitive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sourceSlug,
+      overrides,
+    }: {
+      sourceSlug: string;
+      overrides?: Partial<Primitive>;
+    }) =>
+      api.post<IntegrationResult>(
+        `/api/primitives/${sourceSlug}/fork`,
+        overrides ?? {},
+      ),
+    onSuccess: () => invalidateCorpusViews(qc),
+  });
+}
+
+// ─────────── draft lifecycle ───────────
+
+export interface DraftEnvelope {
+  id: string;
+  slug?: string;
+  kind?: string;
+  title?: string;
+  created_at: string;
+  modified_at: string;
+  body: Partial<Primitive>;
+}
+
+export interface DraftValidationResult {
+  ok: boolean;
+  errors?: Array<{ field: string; sev: "reject" | "warn"; message: string }>;
+}
+
+export function useDrafts() {
+  return useQuery({
+    queryKey: ["drafts"],
+    queryFn: () => api.get<DraftEnvelope[]>("/api/drafts/primitives"),
+  });
+}
+
+export function useDraft(id: string | null) {
+  return useQuery({
+    queryKey: ["draft", id],
+    queryFn: () => api.get<DraftEnvelope>(`/api/drafts/primitives/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<Primitive>) =>
+      api.post<DraftEnvelope>("/api/drafts/primitives", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["drafts"] }),
+  });
+}
+
+export function useUpdateDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<Primitive> }) =>
+      api.put<DraftEnvelope>(`/api/drafts/primitives/${id}`, body),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ["drafts"] });
+      qc.invalidateQueries({ queryKey: ["draft", id] });
+    },
+  });
+}
+
+export function useValidateDraft() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<DraftValidationResult>(
+        `/api/drafts/primitives/${id}/validate`,
+        {},
+      ),
+  });
+}
+
+export function useStageDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<IntegrationResult>(`/api/drafts/primitives/${id}/stage`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["drafts"] });
+      invalidateCorpusViews(qc);
+    },
+  });
+}
+
+export function useDeleteDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.del<{ ok: boolean; deleted: string }>(`/api/drafts/primitives/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["drafts"] }),
   });
 }
 

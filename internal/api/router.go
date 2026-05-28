@@ -42,7 +42,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("GET /api/status", s.handleStatus)
 	mux.HandleFunc("GET /api/primitives", s.handlePrimitivesList)
+	mux.HandleFunc("POST /api/primitives", s.handlePrimitiveCreate)
 	mux.HandleFunc("GET /api/primitives/{slug}", s.handlePrimitiveDetail)
+	mux.HandleFunc("PUT /api/primitives/{slug}", s.handlePrimitiveUpdate)
+	mux.HandleFunc("DELETE /api/primitives/{slug}", s.handlePrimitiveDelete)
+	mux.HandleFunc("POST /api/primitives/{slug}/fork", s.handlePrimitiveFork)
+
+	// drafts (UI-shape bodies, mutable, lifecycle: create → validate → stage)
+	mux.HandleFunc("GET /api/drafts/primitives", s.handleDraftList)
+	mux.HandleFunc("POST /api/drafts/primitives", s.handleDraftCreate)
+	mux.HandleFunc("GET /api/drafts/primitives/{id}", s.handleDraftGet)
+	mux.HandleFunc("PUT /api/drafts/primitives/{id}", s.handleDraftUpdate)
+	mux.HandleFunc("DELETE /api/drafts/primitives/{id}", s.handleDraftDelete)
+	mux.HandleFunc("POST /api/drafts/primitives/{id}/validate", s.handleDraftValidate)
+	mux.HandleFunc("POST /api/drafts/primitives/{id}/stage", s.handleDraftStage)
 
 	// indexes
 	mux.HandleFunc("GET /api/indexes/resolve", s.handleResolveIndexes)

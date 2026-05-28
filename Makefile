@@ -109,7 +109,7 @@ fmt:
 	cd $(FE_DIR) && $(NPM) run format --if-present
 
 verify-mock:
-	$(GO) run ./cmd/commons verify-mock --mock ../Rillmark/_Proto-Commons/mock
+	$(GO) run ./cmd/commons verify-mock --mock ../../Rillmark/_Proto-Commons/mock
 
 clean:
 	rm -rf $(DIST_DIR) $(FE_DIR)/dist $(FE_DIR)/node_modules runtime

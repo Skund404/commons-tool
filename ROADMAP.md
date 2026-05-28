@@ -9,6 +9,18 @@ against effort at any given moment.
 
 ---
 
+## Recently shipped
+
+- **Primitive CRUD + draft lifecycle** (PR feat/primitive-crud-drafts):
+  POST/PUT/DELETE/fork on primitives plus full draft create→update→validate
+  →stage→delete. Integration gates wrap every write (schema, hash auth,
+  slug collision, cycle detection, dangling-ref check, auto-index regen,
+  bundle-integrity warning, state log). Editor and Browser panes wired
+  through TanStack Query mutations. Closes the "tool cannot persist anything"
+  gap that blocked Step 3 seed-corpus authoring.
+
+---
+
 ## Short term
 
 ### CI: `make test-go` + `make e2e` on PRs
@@ -18,7 +30,7 @@ GitHub Actions workflow at `.github/workflows/ci.yml` that runs:
 - `make verify-mock` against the in-repo mock corpus
 - `make test-go` (4 packages with tests)
 - `make build` (cross-check the embed pipeline)
-- `make install-pw && make e2e` (11 Playwright tests)
+- `make install-pw && make e2e` (13 Playwright tests)
 
 Once the workflow is green on a PR, add the job name to the branch-protection
 required status checks so merges block on red CI. The protection rule is
