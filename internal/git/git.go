@@ -157,6 +157,62 @@ func (r *Repo) Push(remote, branch string, auth AuthFunc) error {
 	return nil
 }
 
+// FetchPR shallow-fetches GitHub's refs/pull/<num>/head ref into a local
+// refs/pull/<num> ref. Subsequent calls are cheap (go-git fetches
+// incrementally). After this lands, the PR's commit graph is reachable
+// from refs/pull/<num> for downstream DiffRefs.
+func (r *Repo) FetchPR(remote string, num int, auth AuthFunc) error {
+	refSpec := config.RefSpec(
+		fmt.Sprintf("+refs/pull/%d/head:refs/pull/%d", num, num),
+	)
+	opts := &gogit.FetchOptions{
+		RemoteName: remote,
+		RefSpecs:   []config.RefSpec{refSpec},
+	}
+	rem, err := r.repo.Remote(remote)
+	if err == nil && auth != nil {
+		if urls := rem.Config().URLs; len(urls) > 0 {
+			a, aerr := auth(urls[0])
+			if aerr != nil {
+				return aerr
+			}
+			if a != nil {
+				opts.Auth = a
+			}
+		}
+	}
+	if err := r.repo.Fetch(opts); err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
+		return fmt.Errorf("git: fetch PR #%d: %w", num, err)
+	}
+	return nil
+}
+
+// FetchRef fetches a single remote ref (e.g. "refs/heads/main") into its
+// remote-tracking equivalent. Used to ensure base refs are up to date
+// before computing a live PR diff.
+func (r *Repo) FetchRef(remote, ref string, auth AuthFunc) error {
+	opts := &gogit.FetchOptions{
+		RemoteName: remote,
+		RefSpecs:   []config.RefSpec{config.RefSpec("+" + ref + ":" + ref)},
+	}
+	rem, err := r.repo.Remote(remote)
+	if err == nil && auth != nil {
+		if urls := rem.Config().URLs; len(urls) > 0 {
+			a, aerr := auth(urls[0])
+			if aerr != nil {
+				return aerr
+			}
+			if a != nil {
+				opts.Auth = a
+			}
+		}
+	}
+	if err := r.repo.Fetch(opts); err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
+		return fmt.Errorf("git: fetch %s: %w", ref, err)
+	}
+	return nil
+}
+
 // HeadRef returns the short SHA of HEAD.
 func (r *Repo) HeadRef() (string, error) {
 	ref, err := r.repo.Head()

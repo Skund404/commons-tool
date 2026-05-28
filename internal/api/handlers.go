@@ -227,15 +227,17 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		// Try real gh PR if not in fixtures.
-		if s.GitHub != nil {
-			// Diff currently returns raw text — not yet parsed into SemanticDiff.
-			// For v1 the recommender focuses on fixture PRs; live PR parsing
-			// is the next iteration's scope.
-			writeError(w, 501, fmt.Sprintf("live PR #%d diff parsing not yet implemented; fixture PRs only", num))
+		// Live path: fetch the PR head ref locally + DiffRefs.
+		if s.GitHub == nil {
+			writeError(w, 404, fmt.Sprintf("PR #%d not in fixtures and gh client not configured", num))
 			return
 		}
-		writeError(w, 404, "no such PR fixture")
+		sd, _, lerr := s.liveDiffFromPR(r.Context(), num)
+		if lerr != nil {
+			writeError(w, 502, lerr.Error())
+			return
+		}
+		writeJSON(w, 200, sd)
 	case "local":
 		// Local diff requires being inside a git repo rooted at CorpusRoot.
 		repo, err := commonsgit.Open(s.CorpusRoot)
@@ -343,24 +345,29 @@ func (s *Server) handlePRList(w http.ResponseWriter, r *http.Request) {
 			"files":      pr.Files,
 			"semantic":   pr.Semantic,
 			"recs":       recs,
+			"url":        "", // fixture — no real PR
 		})
 	}
-	// Optionally merge in real gh PRs when configured. Errors are non-fatal
-	// (we want the demo to work even when offline).
+	// Merge in live gh PRs when configured. Each live PR gets the same
+	// files+semantic+recs enrichment as fixtures, computed by fetching the
+	// PR head locally and running the recommender against the resulting
+	// SemanticDiff. enrichLivePR is cached (60s TTL) so repeated /api/prs
+	// calls don't refetch.
 	if s.GitHub != nil {
 		if live, err := s.GitHub.ListPRs(r.Context()); err == nil {
 			for _, lp := range live {
+				b := s.enrichLivePR(r.Context(), lp.Number, corpus, bundles, settings)
 				out = append(out, map[string]any{
-					"id":     lp.Number,
-					"title":  lp.Title,
-					"author": lp.Author,
-					"branch": lp.Branch,
-					"age":    lp.Age,
-					"files":  []any{},
-					"semantic": []string{
-						"Live gh PR — open in GitHub for raw diff",
-					},
-					"recs": []any{},
+					"id":         lp.Number,
+					"title":      lp.Title,
+					"author":     lp.Author,
+					"authorMeta": lp.AuthorMeta,
+					"branch":     lp.Branch,
+					"age":        lp.Age,
+					"files":      b.Files,
+					"semantic":   b.Semantic,
+					"recs":       b.Recs,
+					"url":        lp.URL,
 				})
 			}
 		}
@@ -396,6 +403,29 @@ func (s *Server) handlePRDetail(w http.ResponseWriter, r *http.Request) {
 				"files":      pr.Files,
 				"semantic":   pr.Semantic,
 				"recs":       recs,
+				"url":        "",
+			})
+			return
+		}
+	}
+	// Not a fixture — try live gh.
+	if s.GitHub != nil {
+		pr, gerr := s.GitHub.GetPR(r.Context(), num)
+		if gerr == nil {
+			corpus, _ := indexer.LoadCorpus(s.CorpusRoot, "primitives")
+			bundles, _ := readBundles(s.CorpusRoot)
+			b := s.enrichLivePR(r.Context(), num, corpus, bundles, commonsdiff.DefaultSettings())
+			writeJSON(w, 200, map[string]any{
+				"id":         pr.Number,
+				"title":      pr.Title,
+				"author":     pr.Author,
+				"authorMeta": pr.AuthorMeta,
+				"branch":     pr.Branch,
+				"age":        pr.Age,
+				"files":      b.Files,
+				"semantic":   b.Semantic,
+				"recs":       b.Recs,
+				"url":        pr.URL,
 			})
 			return
 		}
@@ -423,6 +453,8 @@ func (s *Server) handlePRMerge(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error())
 		return
 	}
+	// Drop the cached diff/recs so the next list reflects merged state.
+	invalidateLivePRCache(num)
 	writeJSON(w, 200, map[string]any{
 		"ok":      true,
 		"pr":      num,

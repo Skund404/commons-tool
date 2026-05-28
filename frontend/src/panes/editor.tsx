@@ -82,17 +82,11 @@ const SCRATCH_AWL_TEMPLATE: Primitive = {
 
 export function PaneEditor({ slug, fresh, fork, onFork, onDelete, go }: PaneEditorProps) {
   const { data: PRIMS = [] } = usePrimitives();
+  // The toolbar's primitive-name button still opens this local switcher (it
+  // shows the current primitive with a "Current" badge). Global ⌘K is now
+  // handled in App.tsx and opens the cross-pane GlobalSearchModal — that
+  // listener is intentionally removed here to avoid stacking two modals.
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setSwitcherOpen(true);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
   const start = useMemo<Primitive>(() => {
     if (fork) {
       const source = PRIMS.find((p) => p.id === fork);
