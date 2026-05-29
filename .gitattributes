@@ -1,0 +1,4 @@
+# The §6.3/§9.9 normalization vectors carry hand-verified code points. Pin to
+# LF so this file stays byte-identical with its source in the proto-commons mock
+# (_Proto-Commons/mock/fixtures/) across platforms — no CRLF churn.
+internal/indexer/testdata/normalization-vectors.json text eol=lf

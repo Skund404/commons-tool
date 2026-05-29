@@ -44,6 +44,21 @@ jobs:
         env:
           COMMONS_MOCK_PATH: ${{ github.workspace }}/.cache/proto-commons
 
+      # §9.9 normalization-vector gate. The Go side runs inside `go test ./...`
+      # above (internal/indexer/normalize_test.go). The Python reference impl
+      # lives in the proto-commons mock, so run it here against the cloned
+      # test-corpus — commons-tool CI is the one place that has both the Go code
+      # and the published mock, making it the natural cross-impl integration
+      # point. Guarded so it stays non-breaking until the mock is republished
+      # with scripts/test_normalize.py + fixtures/normalization-vectors.json.
+      - name: normalization vectors — cross-impl gate (§9.9)
+        run: |
+          if [ -f "$COMMONS_MOCK_PATH/scripts/test_normalize.py" ]; then
+            python3 "$COMMONS_MOCK_PATH/scripts/test_normalize.py"
+          else
+            echo "::notice::test_normalize.py not yet in proto-commons@test-corpus; the Go gate (test-go) still enforces §9.9. Republish the mock to activate the Python cross-impl gate."
+          fi
+
   frontend:
     name: frontend / lint + typecheck + build
     runs-on: ubuntu-latest

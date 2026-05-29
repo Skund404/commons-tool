@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -74,11 +75,27 @@ func LoadCorpus(mockRoot, primitivesDir string) ([]Item, error) {
 	return items, nil
 }
 
-// NormalizeKey applies the resolve-index key contract: NFC + lowercase + whitespace collapse.
+// fold is the language-independent Unicode case folder (CaseFolding.txt full
+// mappings). It is constructed once: cases.Caser is documented safe for
+// concurrent use, and NormalizeKey is called from per-language index builds.
+var fold = cases.Fold()
+
+// NormalizeKey applies the resolve-index key contract (spec §6.3):
+//
+//	NFC -> Unicode case fold -> NFC -> whitespace-collapse -> trim
+//
+// Case folding (golang.org/x/text/cases.Fold, backed by CaseFolding.txt) is
+// used instead of strings.ToLower because ToLower is a simple 1:1 rune mapping
+// that diverges from Python's str.lower()/str.casefold() and JS toLowerCase on
+// characters like U+0130 -- which would break the §6.6 cross-implementation
+// determinism guarantee. The second NFC pass reconciles any composition
+// divergence the fold introduces. The vectors in
+// testdata/normalization-vectors.json pin this byte-for-byte across impls.
 func NormalizeKey(s string) string {
 	nfc := norm.NFC.String(s)
-	lower := strings.ToLower(nfc)
-	return strings.Join(strings.Fields(lower), " ")
+	folded := fold.String(nfc)
+	refolded := norm.NFC.String(folded)
+	return strings.Join(strings.Fields(refolded), " ")
 }
 
 // BuildResolveIndexes builds the {lang: {key: entry-or-entries}} structure.
