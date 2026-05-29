@@ -149,5 +149,5 @@ Calling these out so they don't bubble up as suggestions:
   Foundation infrastructure (SaaS layer, federation), not in this tool.
 - **Web hosting** — `commons` is a desktop maintainer instrument, not a
   public commons browser. Public browsing surface is the proto-commons repo
-  itself + (later) a Docusaurus-rendered view.
+  itself 
 - **Telemetry** — locked. Never.
