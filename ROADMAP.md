@@ -148,6 +148,6 @@ Calling these out so they don't bubble up as suggestions:
   maintainer by design. The collaboration story lives in the broader
   Foundation infrastructure (SaaS layer, federation), not in this tool.
 - **Web hosting** — `commons` is a desktop maintainer instrument, not a
-  public commons browser. Public browsing surface is the proto-commons repo
-  itself 
+  public commons browser. The public browsing surface is the proto-commons
+  repo itself on GitHub.
 - **Telemetry** — locked. Never.
