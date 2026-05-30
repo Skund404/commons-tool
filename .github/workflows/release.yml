@@ -1,0 +1,61 @@
+name: release
+
+# Build the cross-platform binaries and attach them to a GitHub Release when a
+# v*.*.* tag is pushed, so contributors can grab a binary without a toolchain.
+# The Makefile stamps internal/version.Version from `git describe --tags`, so
+# the released binary reports the tag (hence fetch-depth: 0).
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build a release for, e.g. v0.2.0'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: cd frontend && npm ci && npm run build
+      - run: make build-linux
+      - run: make build-windows
+
+      - name: Package + checksums
+        run: |
+          cd dist
+          tar -czf commons-linux-amd64.tar.gz commons-linux-amd64
+          zip -q commons-windows-amd64.zip commons-windows-amd64.exe
+          sha256sum commons-linux-amd64.tar.gz commons-windows-amd64.zip > SHA256SUMS.txt
+          echo "── SHA256SUMS.txt ──"; cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            dist/commons-linux-amd64.tar.gz \
+            dist/commons-windows-amd64.zip \
+            dist/SHA256SUMS.txt

@@ -26,32 +26,26 @@ against effort at any given moment.
   through TanStack Query mutations. Closes the "tool cannot persist anything"
   gap that blocked Step 3 seed-corpus authoring.
 
+- **CI on every PR** (`.github/workflows/ci.yml`): go (verify-mock + test-go),
+  frontend (lint + typecheck + build), cross-compile, and Playwright e2e on
+  Linux + Windows. `commons-tool` `main` now *requires* these checks green to
+  merge (branch-protection required status checks).
+
+- **intake-incoming** (`commons intake-incoming`): explode
+  `contributions/incoming/` ships (closures + bundles) into the canonical
+  corpus and rebuild indexes; maps HideSync's authoring-shape bundle to the
+  canonical `schema.Bundle` shape, preserving per-item notes (the `note` field
+  added to `schema.BundleItem`).
+
+- **Schema validator unit tests + tagged release binaries**: `internal/schema`
+  now has table-driven coverage of `ValidatePrimitive` / `ValidateBundle`; a
+  `v*.*.*` tag (`.github/workflows/release.yml`) builds and attaches
+  `commons-{linux,windows}-amd64` archives + `SHA256SUMS.txt` to a GitHub
+  Release, so contributors can grab a binary without a toolchain.
+
 ---
 
 ## Short term
-
-### CI: `make test-go` + `make e2e` on PRs
-
-GitHub Actions workflow at `.github/workflows/ci.yml` that runs:
-
-- `make verify-mock` against the in-repo mock corpus
-- `make test-go` (4 packages with tests)
-- `make build` (cross-check the embed pipeline)
-- `make install-pw && make e2e` (16 Playwright tests)
-
-Once the workflow is green on a PR, add the job name to the branch-protection
-required status checks so merges block on red CI. The protection rule is
-already in place — only the status check list needs updating.
-
-### Release artifacts on tagged builds
-
-A `release.yml` workflow triggered on `v*.*.*` tags. Builds both targets
-and attaches them to the GitHub Release:
-
-- `commons-linux-amd64.tar.gz`
-- `commons-windows-amd64.zip`
-
-So contributors can grab a binary without a toolchain. SHA-256 sums alongside.
 
 ### Live `gh pr diff` → SemanticDiff
 
