@@ -62,7 +62,20 @@ func (s *Server) liveDiffFromPR(ctx context.Context, num int) (*commonsgit.Seman
 	}
 	repo, err := commonsgit.Open(s.CorpusRoot)
 	if err != nil {
-		return nil, nil, fmt.Errorf("open corpus as git repo: %w (pass --mock <git-checkout> for live PRs)", err)
+		// Corpus dir isn't a local git checkout of the commons remote, so we
+		// can't fetch the PR head and diff git objects. Fall back to parsing
+		// `gh pr diff` text — full analysis for added/deleted records,
+		// file-level for modified ones (see internal/git/patch.go).
+		text, derr := s.GitHub.PRDiff(ctx, num)
+		if derr != nil {
+			return nil, pr, fmt.Errorf("corpus is not a git checkout (%v) and `gh pr diff` failed: %w", err, derr)
+		}
+		sd, perr := commonsgit.ParseUnifiedDiff(text)
+		if perr != nil {
+			return nil, pr, fmt.Errorf("parse gh pr diff: %w", perr)
+		}
+		sd.Source = fmt.Sprintf("pr#%d (text)", num)
+		return sd, pr, nil
 	}
 	auth := gitAuthFromGh()
 	// Refresh base ref locally so the diff has a sensible starting point.
