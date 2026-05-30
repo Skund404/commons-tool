@@ -26,6 +26,22 @@ make build      # produce single binary in dist/
 make verify-mock # validate against the reference mock corpus
 ```
 
+Maintainer CLI subcommands (also available on the built binary):
+
+```bash
+commons verify-mock --mock DIR              # validate corpus + check index parity
+commons intake-incoming --mock DIR [--apply] # explode contributions/incoming/ ships
+                                             #   into the canonical corpus + rebuild
+                                             #   indexes (default: dry-run)
+```
+
+`intake-incoming` reads HideSync "ship" files staged in
+`contributions/incoming/` — a dependency closure (array of primitives) or a
+bundle plus its members — writes each primitive to `primitives/<kind>s/<slug>.json`,
+maps HideSync's authoring-shape bundle to the canonical `schema.Bundle` shape
+(preserving per-item notes), rebuilds the resolve/taxonomy indexes, and removes
+the staged file. `--apply` performs the writes; the default is a dry-run preview.
+
 After building, run `./dist/commons` (Linux) or `dist\commons.exe` (Windows). It binds the first available port from 8430 upward and opens your default browser.
 
 ## Architecture
