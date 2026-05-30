@@ -235,16 +235,21 @@ export function useBundle(slug: string | null) {
 
 // ─────────── indexes ───────────
 
-export type ResolveIndex = Record<
-  string,
-  Record<string, ResolveEntry | ResolveEntry[]>
->;
+// Resolve projection (addendum §A.5): denormalized, cross-lingual, entries are
+// always lists. One ResolveFile per language under /api/indexes/resolve.
 export interface ResolveEntry {
-  hash: string;
-  path: string;
-  kind: string;
+  ref: string; // categories/<id> | primitives/<kind>s/<slug>.json
+  class: "category" | "primitive";
+  kind: string | null; // six-kind for primitives; null for categories
+  name: string; // matched surface name
+  lang: string;
   canonical: boolean;
 }
+export interface ResolveFile {
+  format_version: string;
+  entries: Record<string, ResolveEntry[]>;
+}
+export type ResolveIndex = Record<string, ResolveFile>; // {lang: ResolveFile}
 export function useResolveIndexes() {
   return useQuery({
     queryKey: ["indexes", "resolve"],
@@ -252,15 +257,27 @@ export function useResolveIndexes() {
   });
 }
 
-export interface TaxNode {
+// Taxonomy projection (addendum §A.7): category tree with attached primitive
+// members. One TaxonomyFile per language under /api/indexes/taxonomy.
+export interface TaxMember {
+  ref: string;
   slug: string;
   kind: string;
-  hash: string;
-  path: string;
   name: string;
+}
+export interface TaxNode {
+  id: string;
+  name: string;
+  parent: string | null;
+  members: TaxMember[];
+  related: string[];
   children: TaxNode[];
 }
-export type TaxonomyIndex = Record<string, Record<string, TaxNode>>;
+export interface TaxonomyFile {
+  format_version: string;
+  tree: Record<string, TaxNode>; // keyed "category/<id>"
+}
+export type TaxonomyIndex = Record<string, TaxonomyFile>; // {lang: TaxonomyFile}
 export function useTaxonomyIndexes() {
   return useQuery({
     queryKey: ["indexes", "taxonomy"],
@@ -345,9 +362,10 @@ export function useSuggestions() {
 export interface CorpusStatus {
   corpus_root: string;
   primitives: number;
+  categories: number;
   bundles: number;
   open_prs: number;
-  cycle_errors: string[] | null;
+  skeleton_errors: string[] | null;
   validator_ok: boolean;
   last_validated: string;
 }

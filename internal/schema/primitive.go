@@ -168,6 +168,16 @@ func ValidatePrimitive(p *Primitive) []error {
 				add("properties.names: must be object {lang: [name, ...]}")
 			}
 		}
+		// properties.taxonomy (addendum §A.3): a category-membership id. Resolution
+		// to an existing category is checked at the index layer
+		// (indexer.ValidateMembership); here we only gate the structural type.
+		if tax, ok := p.Properties["taxonomy"]; ok {
+			if s, isStr := tax.(string); !isStr {
+				add("properties.taxonomy: must be a string category id")
+			} else if s != "" && !slugRE.MatchString(s) {
+				add("properties.taxonomy: %q must be a kebab-case category id", s)
+			}
+		}
 		if lic, ok := p.Properties["license"]; ok {
 			if s, isStr := lic.(string); isStr {
 				if !strings.HasPrefix(s, "CC-") &&

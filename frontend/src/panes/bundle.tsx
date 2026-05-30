@@ -18,7 +18,7 @@ import {
 } from "@/components";
 import { PASCAL_EMITTER_URI } from "@/fixtures";
 import { useBundles, usePrimitives } from "@/api/hooks";
-import type { Bundle, BundleItem, BundleRole, Primitive, PrimitiveKind } from "@/types/primitives";
+import type { Bundle, BundleItem, BundleRole, BundleSuccessor, Primitive, PrimitiveKind } from "@/types/primitives";
 
 type Route =
   | { mode: "list" }
@@ -53,12 +53,14 @@ export function PaneBundle() {
       emitter: PASCAL_EMITTER_URI,
       license: "CC-BY-4.0",
       state: "draft",
+      lifecycle: "open",
       names: {
         en: { name: "Untitled bundle", desc: "" },
         de: { name: "", desc: "" },
         fr: { name: "", desc: "" },
       },
       items: [],
+      successors: [],
     };
     return (
       <BundleEditor
@@ -270,6 +272,11 @@ function BundleEditor({
       names: { ...prev.names, [lang]: { ...prev.names[lang], ...patch } },
     }));
   const setItems = (items: BundleItem[]) => setB((prev) => ({ ...prev, items }));
+  const setSuccessor = (i: number, patch: Partial<BundleSuccessor>) =>
+    setB((prev) => ({
+      ...prev,
+      successors: (prev.successors ?? []).map((s, j) => (j === i ? { ...s, ...patch } : s)),
+    }));
 
   const slugValid = /^[a-z0-9-]+$/.test(b.slug);
   const hasEn = !!b.names.en?.name?.trim();
@@ -334,7 +341,7 @@ function BundleEditor({
       <div style={{ flex: 1, overflowY: "auto", background: "var(--bg)" }}>
         <div style={{ maxWidth: 820, margin: "0 auto", padding: 24 }}>
           <Card title="Identity" padded>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
               <FieldBlock label="Slug" hint="Kebab-case identifier.">
                 <Input
                   leadingIcon={<I.Tag size={12} />}
@@ -346,6 +353,16 @@ function BundleEditor({
                       slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
                     })
                   }
+                />
+              </FieldBlock>
+              <FieldBlock label="Lifecycle" hint={b.lifecycle === "closed" ? "Frozen citation — body immutable." : "Living kit — editable."}>
+                <Segmented<"open" | "closed">
+                  value={b.lifecycle ?? "open"}
+                  onChange={(lifecycle) => setB((prev) => ({ ...prev, lifecycle }))}
+                  options={[
+                    { value: "open", label: "open" },
+                    { value: "closed", label: "closed" },
+                  ]}
                 />
               </FieldBlock>
               <FieldBlock label="License">
@@ -447,15 +464,19 @@ function BundleEditor({
                     <div
                       key={i}
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "16px 28px 1fr 160px 32px",
-                        gap: 10,
-                        alignItems: "center",
-                        padding: "8px 12px",
                         borderTop: i === 0 ? "0" : "1px solid var(--line)",
                         background: isBundle ? "var(--surface-2)" : "transparent",
                       }}
                     >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "16px 28px 1fr 160px 32px",
+                          gap: 10,
+                          alignItems: "center",
+                          padding: "8px 12px",
+                        }}
+                      >
                       <span style={{ color: "var(--ink-4)", cursor: "grab" }}>
                         <I.Drag size={12} />
                       </span>
@@ -527,9 +548,104 @@ function BundleEditor({
                         icon={<I.X size={12} />}
                         onClick={() => setItems(b.items.filter((_, j) => j !== i))}
                       />
+                      </div>
+                      <div style={{ padding: "0 12px 8px 54px" }}>
+                        <Input
+                          value={it.note?.[activeLang] ?? ""}
+                          onChange={(e) =>
+                            setItems(
+                              b.items.map((x, j) =>
+                                j === i
+                                  ? { ...x, note: { ...(x.note ?? {}), [activeLang]: e.target.value } }
+                                  : x,
+                              ),
+                            )
+                          }
+                          placeholder={`note (${activeLang}) — optional, shown to importers`}
+                          style={{ height: 28, fontSize: 12 }}
+                        />
+                      </div>
                     </div>
                   );
                 })
+              )}
+            </Card>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <Card
+              title={`Successors · ${(b.successors ?? []).length}`}
+              subtitle="Append-only forward pointers to newer standalone bundles. Excluded from the bundle hash; the original stays available."
+              padded={false}
+              action={
+                <Button
+                  variant="default"
+                  size="sm"
+                  icon={<I.Plus size={12} />}
+                  onClick={() =>
+                    setB((prev) => ({
+                      ...prev,
+                      successors: [
+                        ...(prev.successors ?? []),
+                        { target: "", note: {}, change_impact: "", added: new Date().toISOString().slice(0, 10) },
+                      ],
+                    }))
+                  }
+                >
+                  Add successor
+                </Button>
+              }
+            >
+              {(b.successors ?? []).length === 0 ? (
+                <div style={{ padding: 16, textAlign: "center", color: "var(--ink-3)", fontSize: 12 }}>
+                  No successors. Add one when a newer bundle supersedes this one.
+                </div>
+              ) : (
+                (b.successors ?? []).map((sc, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: "8px 12px",
+                      borderTop: i === 0 ? "0" : "1px solid var(--line)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                    }}
+                  >
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 170px 32px", gap: 8, alignItems: "center" }}>
+                      <Input
+                        leadingIcon={<I.Tag size={12} />}
+                        value={sc.target}
+                        placeholder="successor bundle slug or hash"
+                        onChange={(e) => setSuccessor(i, { target: e.target.value })}
+                      />
+                      <Input
+                        value={sc.change_impact ?? ""}
+                        placeholder="change_impact (optional)"
+                        onChange={(e) => setSuccessor(i, { change_impact: e.target.value })}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={<I.X size={12} />}
+                        onClick={() =>
+                          setB((prev) => ({
+                            ...prev,
+                            successors: (prev.successors ?? []).filter((_, j) => j !== i),
+                          }))
+                        }
+                      />
+                    </div>
+                    <Input
+                      value={sc.note?.[activeLang] ?? ""}
+                      placeholder={`why supersede (${activeLang}) — optional`}
+                      style={{ height: 28, fontSize: 12 }}
+                      onChange={(e) =>
+                        setSuccessor(i, { note: { ...(sc.note ?? {}), [activeLang]: e.target.value } })
+                      }
+                    />
+                  </div>
+                ))
               )}
             </Card>
           </div>

@@ -117,8 +117,11 @@ func TestIntakeIncoming_ExplodesClosureAndBundle(t *testing.T) {
 	if first["record_class"] != "primitive" || first["kind"] != "material" || first["slug"] != "egg" {
 		t.Errorf("item[0] not canonicalized: %v", first)
 	}
-	if first["note"] != "the egg" {
-		t.Errorf("item[0] note not preserved: %v", first["note"])
+	// note is localized into {lang: string} (canonicalized from the authoring
+	// plain string on the "en" key per the 2026-05-30 localize-the-code decision).
+	noteMap, _ := first["note"].(map[string]any)
+	if noteMap["en"] != "the egg" {
+		t.Errorf("item[0] note not preserved/localized: %v", first["note"])
 	}
 	if first["hash"] != hashEgg {
 		t.Errorf("item[0] hash = %v, want %s", first["hash"], hashEgg)

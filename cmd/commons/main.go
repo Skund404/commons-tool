@@ -193,14 +193,23 @@ func runVerifyMock(args []string) int {
 	}
 	fmt.Printf("  validator: clean across %d primitives\n", len(corpus))
 
-	fmt.Println("Detecting specializes cycles ...")
-	if cycErrs := indexer.DetectCycles(corpus); len(cycErrs) > 0 {
-		for _, e := range cycErrs {
+	fmt.Println("Loading category skeleton ...")
+	cats, err := indexer.LoadCategories(root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "verify-mock: load categories:", err)
+		return 1
+	}
+	fmt.Printf("  loaded %d categories\n", len(cats))
+
+	skelErrs := indexer.ValidateSkeleton(cats)
+	skelErrs = append(skelErrs, indexer.ValidateMembership(cats, corpus)...)
+	if len(skelErrs) > 0 {
+		for _, e := range skelErrs {
 			fmt.Fprintf(os.Stderr, "  ERROR: %s\n", e)
 		}
 		return 1
 	}
-	fmt.Println("  no cycles, all specializes-parents resolve")
+	fmt.Println("  skeleton + membership validate (specializes forest, taxonomy resolves)")
 
 	bundleErrs, err := verifyBundles(root, corpus)
 	if err != nil {
@@ -215,26 +224,33 @@ func runVerifyMock(args []string) int {
 	}
 	fmt.Println("  bundle hash refs resolve")
 
+	langs := indexer.ObservedLanguages(cats, corpus)
+	manifest := indexer.BuildManifest(langs)
+	fmt.Printf("  languages: %s\n", strings.Join(langs, ", "))
+
 	fmt.Println("Building resolution indexes ...")
-	resolveIdx := indexer.BuildResolveIndexes(corpus)
+	resolveIdx := indexer.BuildResolve(cats, corpus)
 	for lang, e := range resolveIdx {
-		fmt.Printf("  %s: %d keys\n", lang, len(e))
+		fmt.Printf("  %s: %d keys\n", lang, len(e.Entries))
 	}
 
 	fmt.Println("Building taxonomy indexes ...")
-	taxIdx := indexer.BuildTaxonomyIndexes(corpus)
+	taxIdx := indexer.BuildTaxonomy(cats, corpus, langs)
 	for lang, t := range taxIdx {
-		fmt.Printf("  %s: %d root nodes\n", lang, len(t))
+		fmt.Printf("  %s: %d root nodes\n", lang, len(t.Tree))
 	}
 
 	if !*dryRun {
-		fmt.Println("Writing resolution indexes ...")
-		if err := indexer.WriteIndexes(filepath.Join(root, "indexes", "resolve"), resolveIdx); err != nil {
+		fmt.Println("Writing indexes ...")
+		if err := indexer.WriteManifest(root, manifest); err != nil {
+			fmt.Fprintln(os.Stderr, "  write manifest:", err)
+			return 1
+		}
+		if err := indexer.WritePerLang(filepath.Join(root, "indexes", "resolve"), resolveIdx); err != nil {
 			fmt.Fprintln(os.Stderr, "  write resolve:", err)
 			return 1
 		}
-		fmt.Println("Writing taxonomy indexes ...")
-		if err := indexer.WriteIndexes(filepath.Join(root, "indexes", "taxonomy"), taxIdx); err != nil {
+		if err := indexer.WritePerLang(filepath.Join(root, "indexes", "taxonomy"), taxIdx); err != nil {
 			fmt.Fprintln(os.Stderr, "  write taxonomy:", err)
 			return 1
 		}
@@ -243,17 +259,46 @@ func runVerifyMock(args []string) int {
 	}
 
 	fmt.Println("\n--dry-run: comparing with committed indexes ...")
-	divergedR := compareIndexes(filepath.Join(root, "indexes", "resolve"), resolveIdx)
-	divergedT := compareIndexes(filepath.Join(root, "indexes", "taxonomy"), taxIdx)
-	if len(divergedR)+len(divergedT) > 0 {
+	var diverged []string
+	if d := compareFile(filepath.Join(root, "indexes", "manifest.json"), manifest); d != "" {
+		diverged = append(diverged, d)
+	}
+	diverged = append(diverged, compareIndexes(filepath.Join(root, "indexes", "resolve"), resolveIdx)...)
+	diverged = append(diverged, compareIndexes(filepath.Join(root, "indexes", "taxonomy"), taxIdx)...)
+	if len(diverged) > 0 {
 		fmt.Fprintln(os.Stderr, "  DIVERGED:")
-		for _, d := range append(divergedR, divergedT...) {
+		for _, d := range diverged {
 			fmt.Fprintln(os.Stderr, "    "+d)
 		}
 		return 2
 	}
 	fmt.Println("  all indexes match committed versions")
 	return 0
+}
+
+// compareFile semantically compares one committed JSON file against a generated
+// value. Returns "" on match, else a short divergence label.
+func compareFile(path string, generated any) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Sprintf("%s (missing)", filepath.Base(path))
+	}
+	var committed any
+	if err := json.Unmarshal(data, &committed); err != nil {
+		return fmt.Sprintf("%s (parse error)", filepath.Base(path))
+	}
+	gen, err := json.Marshal(generated)
+	if err != nil {
+		return fmt.Sprintf("%s (marshal error)", filepath.Base(path))
+	}
+	var genNorm any
+	if err := json.Unmarshal(gen, &genNorm); err != nil {
+		return fmt.Sprintf("%s (roundtrip error)", filepath.Base(path))
+	}
+	if !deepEqualJSON(committed, genNorm) {
+		return filepath.Base(path)
+	}
+	return ""
 }
 
 func verifyBundles(root string, corpus []indexer.Item) ([]string, error) {

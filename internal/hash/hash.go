@@ -51,6 +51,24 @@ func Compute(record map[string]any) (string, error) {
 	return h, err
 }
 
+// ComputeBundle hashes a bundle record per the addendum §B.4 preimage rule: the
+// `successors` array is excluded (in addition to the standard transient fields)
+// so a closed bundle's frozen content_hash survives append-only successor adds.
+// Use this — never Compute — at every bundle content_hash site.
+func ComputeBundle(record map[string]any) (string, error) {
+	if _, ok := record["successors"]; !ok {
+		return Compute(record)
+	}
+	clone := make(map[string]any, len(record))
+	for k, v := range record {
+		if k == "successors" {
+			continue
+		}
+		clone[k] = v
+	}
+	return Compute(clone)
+}
+
 // stripTransient walks the record (recursively) and removes any object key in
 // TransientFields. Returns a deep-cloned tree so the caller's data is untouched.
 func stripTransient(v any) any {

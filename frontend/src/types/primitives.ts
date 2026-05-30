@@ -97,7 +97,8 @@ export interface Primitive {
   state: LifecycleState;
   tags: string[];
   names: LocalizedNames;
-  specializes: string | null; // parent primitive slug (if any)
+  specializes: string | null; // legacy: parent primitive slug (still a valid rel, no longer taxonomy)
+  taxonomy?: string | null; // category-membership id (addendum §A.3); the taxonomy join
   rel: Relationship[];
   domain: Domain;
   // Lineage block (§4.4) — most commons primitives sit at the floor.
@@ -111,6 +112,16 @@ export interface BundleItem {
   kind: PrimitiveKind | "bundle";
   slug: string;
   role: BundleRole;
+  note?: Record<string, string>; // localized {lang: string} (addendum §B.3)
+}
+
+// addendum §B.6 — append-only, hash-excluded forward pointer to a standalone
+// successor bundle. Carries no role.
+export interface BundleSuccessor {
+  target: string; // successor bundle by slug or hash
+  note?: Record<string, string>; // localized explanation
+  change_impact?: string; // open vocabulary (drop-in / footprint-ripple / …)
+  added?: string;
 }
 
 export interface Bundle {
@@ -119,9 +130,11 @@ export interface Bundle {
   hash: string;
   emitter: string;
   license: "CC-BY-4.0";
-  state: LifecycleState;
+  state: LifecycleState; // UI lifecycle (draft/validated/staged/published)
+  lifecycle?: "open" | "closed"; // bundle open/closed lifecycle (addendum §B.5)
   names: LocalizedBundleName;
   items: BundleItem[];
+  successors?: BundleSuccessor[];
 }
 
 export interface FederationRoot {

@@ -97,7 +97,14 @@ func gateHash(sc *commonsgit.SemanticChange) []Recommendation {
 		return nil
 	}
 	claimed, _ := doc["content_hash"].(string)
-	computed, err := hash.Compute(doc)
+	// Bundles exclude `successors` from the preimage (addendum §B.4).
+	var computed string
+	var err error
+	if sc.Class == commonsgit.ClassBundle {
+		computed, err = hash.ComputeBundle(doc)
+	} else {
+		computed, err = hash.Compute(doc)
+	}
 	if err != nil {
 		return []Recommendation{{
 			Sev:   SevReject,
@@ -203,44 +210,15 @@ func gateSlugCollision(sc *commonsgit.SemanticChange, corpus []indexer.Item) []R
 	return nil
 }
 
-// gateCycle catches new specializes-edges that introduce a real cycle. The
-// "parent not in corpus" condition is handled by gateDanglingRefs — we only
-// emit here when the cycle detector flags an actual cycle.
-func gateCycle(sc *commonsgit.SemanticChange, corpus []indexer.Item, postState postState) []Recommendation {
-	if sc.After == nil {
-		return nil
-	}
-	// Synthesize the post-diff corpus by overlaying every added/modified record.
-	postIdx := map[string]indexer.Item{}
-	for _, it := range corpus {
-		h, _ := it.Doc["content_hash"].(string)
-		postIdx[h] = it
-	}
-	for h, it := range postState.byHash {
-		postIdx[h] = it
-	}
-	overlay := make([]indexer.Item, 0, len(postIdx))
-	for _, v := range postIdx {
-		overlay = append(overlay, v)
-	}
-	cycErrs := indexer.DetectCycles(overlay)
-	if len(cycErrs) == 0 {
-		return nil
-	}
-	var out []Recommendation
-	for _, e := range cycErrs {
-		if !strings.Contains(e, "cycle") {
-			// "specializes-parent X not in corpus" → handled by dangling gate.
-			continue
-		}
-		out = append(out, Recommendation{
-			Sev:   SevReject,
-			Title: "Specializes cycle introduced",
-			Body:  e,
-			File:  sc.Path,
-		})
-	}
-	return out
+// gateCycle is retained as a no-op. Under the Index & Bundle Addendum 1.0 the
+// taxonomy moved off primitive `specializes` relationships onto an authored
+// category skeleton (indexes/categories/), so a primitive PR can no longer
+// introduce a specializes cycle. The authoritative forest/cycle check now runs
+// over the category skeleton at reindex time (indexer.ValidateSkeleton, surfaced
+// by `commons verify-mock` and the status endpoint). Category-skeleton PRs are
+// not yet modelled by the primitive-keyed semantic diff.
+func gateCycle(_ *commonsgit.SemanticChange, _ []indexer.Item, _ postState) []Recommendation {
+	return nil
 }
 
 // gateDanglingRefs catches relationships pointing at hashes not in the post-

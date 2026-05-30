@@ -205,16 +205,22 @@ func canonicalizeBundle(b map[string]any, defaultEmitter string) (map[string]any
 	var warnings []string
 
 	out := map[string]any{
-		"record_class": "bundle",
-		"slug":         slug,
-		"emitter":      firstNonEmptyStr(asString(b["emitter"]), defaultEmitter),
-		"license":      bundleLicense(b),
-		"lineage":      map[string]any{"provenance_state": "unasserted", "outcome": "unknown"},
-		"name":         bundleNameMap(b),
-		"description":  bundleDescriptionMap(b),
+		"format_version": "1.0",
+		"record_class":   "bundle",
+		"slug":           slug,
+		"state":          bundleState(b),
+		"emitter":        firstNonEmptyStr(asString(b["emitter"]), defaultEmitter),
+		"license":        bundleLicense(b),
+		"lineage":        map[string]any{"provenance_state": "unasserted", "outcome": "unknown"},
+		"name":           bundleNameMap(b),
+		"description":    bundleDescriptionMap(b),
 	}
 	if lin, ok := b["lineage"].(map[string]any); ok {
 		out["lineage"] = lin
+	}
+	// successors[] is append-only + hash-excluded (§B.6); carried verbatim.
+	if succ, ok := b["successors"].([]any); ok && len(succ) > 0 {
+		out["successors"] = succ
 	}
 
 	rawItems, _ := b["items"].([]any)
@@ -234,8 +240,8 @@ func canonicalizeBundle(b map[string]any, defaultEmitter string) (map[string]any
 				"hash":         asString(it["hash"]),
 				"role":         firstNonEmptyStr(asString(it["role"]), "optional"),
 			}
-			if n := asString(it["note"]); n != "" {
-				ci["note"] = n
+			if note := bundleItemNote(it["note"]); note != nil {
+				ci["note"] = note
 			}
 			items = append(items, ci)
 			continue
@@ -256,22 +262,56 @@ func canonicalizeBundle(b map[string]any, defaultEmitter string) (map[string]any
 			"hash":         asString(tgt["hash"]),
 			"role":         firstNonEmptyStr(asString(it["role"]), "optional"),
 		}
-		if n := asString(it["note"]); n != "" {
-			ci["note"] = n // preserved into the canonical item (Q-005)
+		if note := bundleItemNote(it["note"]); note != nil {
+			ci["note"] = note // preserved + localized into the canonical item (Q-005)
 		}
 		items = append(items, ci)
 	}
 	out["items"] = items
 
 	// Recompute the bundle's content_hash over the canonical body — the shape
-	// changed, so any inbound hash is stale.
+	// changed, so any inbound hash is stale. ComputeBundle excludes successors
+	// (§B.4) so the frozen identity survives append-only successor adds.
 	delete(out, "content_hash")
-	h, err := hash.Compute(out)
+	h, err := hash.ComputeBundle(out)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("bundle %s hash: %w", slug, err)
 	}
 	out["content_hash"] = h
 	return out, warnings, nil
+}
+
+// bundleState returns the authored bundle lifecycle state, defaulting to "open"
+// (mutable/living) when absent — the §B.5 default for a freshly authored bundle.
+func bundleState(b map[string]any) string {
+	if s := asString(b["state"]); s == "open" || s == "closed" {
+		return s
+	}
+	return "open"
+}
+
+// bundleItemNote normalizes an authored item note into the canonical localized
+// {lang: string} map: a plain string (HideSync authoring shape) becomes {en: …};
+// an already-localized map is filtered to non-empty string values. Returns nil
+// when there is no note.
+func bundleItemNote(v any) map[string]any {
+	switch n := v.(type) {
+	case string:
+		if n != "" {
+			return map[string]any{"en": n}
+		}
+	case map[string]any:
+		out := map[string]any{}
+		for lang, val := range n {
+			if s, ok := val.(string); ok && s != "" {
+				out[lang] = s
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return nil
 }
 
 // validateBundleDoc round-trips a bundle map through the schema struct and runs

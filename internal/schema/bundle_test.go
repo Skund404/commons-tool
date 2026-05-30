@@ -5,16 +5,19 @@ import "testing"
 // validBundle returns a bundle that passes every gate.
 func validBundle() *Bundle {
 	return &Bundle{
-		RecordClass: "bundle",
-		Slug:        "egg-kit",
-		Emitter:     "opg://commons-seed",
-		ContentHash: goodHash,
-		License:     "CC-BY-4.0",
-		Name:        map[string]string{"en": "Egg kit"},
-		Description: map[string]string{"en": "A tiny kit."},
+		FormatVersion: "1.0",
+		RecordClass:   "bundle",
+		Slug:          "egg-kit",
+		State:         "open",
+		Emitter:       "opg://commons-seed",
+		ContentHash:   goodHash,
+		License:       "CC-BY-4.0",
+		Name:          map[string]string{"en": "Egg kit"},
+		Description:   map[string]string{"en": "A tiny kit."},
 		Items: []BundleItem{
-			{RecordClass: "primitive", Kind: "material", Slug: "egg", Hash: goodHash, Role: "required", Note: "the egg"},
+			{RecordClass: "primitive", Kind: "material", Slug: "egg", Hash: goodHash, Role: "required", Note: map[string]string{"en": "the egg"}},
 		},
+		Successors: []Successor{},
 	}
 }
 
@@ -43,7 +46,15 @@ func TestValidateBundle(t *testing.T) {
 		{"nested bundle item ok", func(b *Bundle) {
 			b.Items[0] = BundleItem{RecordClass: "bundle", Slug: "sub-kit", Hash: goodHash, Role: "optional"}
 		}, false, ""},
-		{"note is optional, preserved", func(b *Bundle) { b.Items[0].Note = "" }, false, ""},
+		{"note is optional, preserved", func(b *Bundle) { b.Items[0].Note = nil }, false, ""},
+		{"missing format_version", func(b *Bundle) { b.FormatVersion = "" }, true, "format_version"},
+		{"bad state", func(b *Bundle) { b.State = "frozen" }, true, "state"},
+		{"missing state", func(b *Bundle) { b.State = "" }, true, "state"},
+		{"closed state ok", func(b *Bundle) { b.State = "closed" }, false, ""},
+		{"successor needs target", func(b *Bundle) { b.Successors = []Successor{{Note: map[string]string{"en": "see v2"}}} }, true, "target"},
+		{"successor ok", func(b *Bundle) {
+			b.Successors = []Successor{{Target: "egg-kit-v2", Note: map[string]string{"en": "see v2"}, ChangeImpact: "drop-in", Added: "2026-05-30"}}
+		}, false, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

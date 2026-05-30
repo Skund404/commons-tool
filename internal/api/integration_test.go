@@ -35,11 +35,25 @@ func mockSrc(t *testing.T) string {
 		filepath.FromSlash(`F:\Rillmark\_Proto-Commons\mock`),
 		filepath.FromSlash("../../../Rillmark/_Proto-Commons/mock"),
 	}
+	// Prefer a corpus that carries the Addendum 1.0 category skeleton — a stale
+	// .cache clone from before the addendum has no indexes/categories and would
+	// fail the taxonomy-membership gate.
+	var firstExisting string
 	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
+		if _, err := os.Stat(c); err != nil {
+			continue
+		}
+		if firstExisting == "" {
+			firstExisting = c
+		}
+		if _, err := os.Stat(filepath.Join(c, "indexes", "categories")); err == nil {
 			abs, _ := filepath.Abs(c)
 			return abs
 		}
+	}
+	if firstExisting != "" {
+		abs, _ := filepath.Abs(firstExisting)
+		return abs
 	}
 	t.Skip("mock corpus not found; set COMMONS_MOCK_PATH or run `make fetch-mock`")
 	return ""
@@ -86,9 +100,9 @@ func TestPrimitiveCreateIntegration(t *testing.T) {
 			"de": map[string]any{"canonical": "Reißahle", "aliases": []any{}},
 			"fr": map[string]any{"canonical": "alène à tracer", "aliases": []any{}},
 		},
-		"specializes": "awl",
-		"rel":         []any{},
-		"domain":      map[string]any{"category": "piercing", "manufacturer": nil},
+		"taxonomy": "awl",
+		"rel":      []any{},
+		"domain":   map[string]any{"category": "piercing", "manufacturer": nil},
 	}
 	res := postJSON(t, ts, "/api/primitives", body)
 	if res.StatusCode != http.StatusCreated {
@@ -115,25 +129,30 @@ func TestPrimitiveCreateIntegration(t *testing.T) {
 		t.Fatalf("content_hash mismatch:\n  on-disk: %s\n  recomputed: %s", claimed, expectedHash)
 	}
 
-	// 3. Resolve indexes contain the new primitive's localized names.
+	// 3. Resolve indexes contain the new primitive's localized names (entries are
+	// nested under "entries" per the addendum, and values are always lists).
 	resolveEN := loadJSON(t, filepath.Join(corpus, "indexes", "resolve", "en.json"))
-	if _, ok := resolveEN.(map[string]any)["scratch awl"]; !ok {
+	enEntries, _ := resolveEN.(map[string]any)["entries"].(map[string]any)
+	if _, ok := enEntries["scratch awl"]; !ok {
 		t.Fatalf("resolve/en.json missing 'scratch awl' key")
 	}
 	resolveDE := loadJSON(t, filepath.Join(corpus, "indexes", "resolve", "de.json"))
-	if _, ok := resolveDE.(map[string]any)[indexer.NormalizeKey("Reißahle")]; !ok {
+	deEntries, _ := resolveDE.(map[string]any)["entries"].(map[string]any)
+	if _, ok := deEntries[indexer.NormalizeKey("Reißahle")]; !ok {
 		t.Fatalf("resolve/de.json missing normalized 'Reißahle'")
 	}
 
-	// 4. Taxonomy index shows scratch-awl under tool/awl.
+	// 4. Taxonomy index shows scratch-awl as a member of category/awl (it declares
+	// properties.taxonomy: "awl", and the mock skeleton has that category).
 	taxEN := loadJSON(t, filepath.Join(corpus, "indexes", "taxonomy", "en.json"))
-	awlNode, ok := taxEN.(map[string]any)["tool/awl"].(map[string]any)
+	tree, _ := taxEN.(map[string]any)["tree"].(map[string]any)
+	awlNode, ok := tree["category/awl"].(map[string]any)
 	if !ok {
-		t.Fatalf("taxonomy/en.json missing tool/awl root")
+		t.Fatalf("taxonomy/en.json missing category/awl root")
 	}
-	children, _ := awlNode["children"].([]any)
+	members, _ := awlNode["members"].([]any)
 	found := false
-	for _, c := range children {
+	for _, c := range members {
 		cm, _ := c.(map[string]any)
 		if s, _ := cm["slug"].(string); s == "scratch-awl" {
 			found = true
@@ -170,9 +189,12 @@ func TestPrimitiveCreateIntegration(t *testing.T) {
 		}
 	}
 
-	// 6. Cycle detection clean.
-	if cyc := indexer.DetectCycles(newCorpus); len(cyc) > 0 {
-		t.Errorf("cycle errors after integration: %v", cyc)
+	// 6. Category skeleton + membership clean.
+	cats, _ := indexer.LoadCategories(srv.CorpusRoot)
+	skelErrs := indexer.ValidateSkeleton(cats)
+	skelErrs = append(skelErrs, indexer.ValidateMembership(cats, newCorpus)...)
+	if len(skelErrs) > 0 {
+		t.Errorf("skeleton/membership errors after integration: %v", skelErrs)
 	}
 
 	// 7. State store recorded last_validation row.
@@ -193,7 +215,7 @@ func TestPrimitiveCreateIntegration(t *testing.T) {
 func TestPrimitiveForkIntegration(t *testing.T) {
 	_, corpus, ts := newIntegrationServer(t)
 
-	res := postJSON(t, ts, "/api/primitives/diamond-awl/fork", map[string]any{})
+	res := postJSON(t, ts, "/api/primitives/osborne-diamond-awl/fork", map[string]any{})
 	if res.StatusCode != 201 {
 		t.Fatalf("want 201, got %d (%s)", res.StatusCode, readAll(t, res))
 	}
@@ -201,8 +223,8 @@ func TestPrimitiveForkIntegration(t *testing.T) {
 	must(t, json.NewDecoder(res.Body).Decode(&out))
 
 	slug, _ := out.Primitive["slug"].(string)
-	if slug != "diamond-awl-fork-1" {
-		t.Errorf("auto-slug: want diamond-awl-fork-1, got %q", slug)
+	if slug != "osborne-diamond-awl-fork-1" {
+		t.Errorf("auto-slug: want osborne-diamond-awl-fork-1, got %q", slug)
 	}
 	rels, _ := out.Primitive["relationships"].([]any)
 	hasPredecessor := false
@@ -221,7 +243,7 @@ func TestPrimitiveForkIntegration(t *testing.T) {
 	}
 
 	// File written.
-	if _, err := os.Stat(filepath.Join(corpus, "primitives", "tools", "diamond-awl-fork-1.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(corpus, "primitives", "tools", "osborne-diamond-awl-fork-1.json")); err != nil {
 		t.Errorf("fork file not written: %v", err)
 	}
 }
@@ -231,12 +253,12 @@ func TestSlugCollisionRejected(t *testing.T) {
 	_, _, ts := newIntegrationServer(t)
 
 	body := map[string]any{
-		"slug":    "awl", // already in the mock
+		"slug":    "round-knife", // already a primitive in the mock
 		"kind":    "tool",
-		"name":    "Another awl",
+		"name":    "Another round knife",
 		"emitter": "opg://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
 		"license": "CC-BY-4.0",
-		"names":   map[string]any{"en": map[string]any{"canonical": "another awl", "aliases": []any{}}},
+		"names":   map[string]any{"en": map[string]any{"canonical": "another round knife", "aliases": []any{}}},
 		"domain":  map[string]any{},
 	}
 	res := postJSON(t, ts, "/api/primitives", body)
@@ -245,12 +267,40 @@ func TestSlugCollisionRejected(t *testing.T) {
 	}
 }
 
-// TestDeleteBlockedByReference confirms 409 when a primitive is referenced.
+// TestDeleteBlockedByReference confirms 409 when a primitive is referenced by
+// another primitive's hash-pinned relationship. Self-contained: create a tool,
+// then a technique that uses_tool it, then try to delete the tool.
 func TestDeleteBlockedByReference(t *testing.T) {
 	_, _, ts := newIntegrationServer(t)
 
-	// diamond-awl specializes awl, so deleting awl is blocked.
-	req, _ := http.NewRequest("DELETE", ts.URL+"/api/primitives/awl", nil)
+	tool := map[string]any{
+		"slug":    "ref-target-tool",
+		"kind":    "tool",
+		"name":    "Ref Target Tool",
+		"emitter": "opg://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+		"license": "CC-BY-4.0",
+		"names":   map[string]any{"en": map[string]any{"canonical": "ref target tool", "aliases": []any{}}},
+		"domain":  map[string]any{},
+	}
+	if res := postJSON(t, ts, "/api/primitives", tool); res.StatusCode != 201 {
+		t.Fatalf("create tool: %d (%s)", res.StatusCode, readAll(t, res))
+	}
+
+	tech := map[string]any{
+		"slug":    "ref-source-technique",
+		"kind":    "technique",
+		"name":    "Ref Source Technique",
+		"emitter": "opg://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+		"license": "CC-BY-4.0",
+		"names":   map[string]any{"en": map[string]any{"canonical": "ref source technique", "aliases": []any{}}},
+		"rel":     []any{map[string]any{"type": "uses_tool", "target": "ref-target-tool"}},
+		"domain":  map[string]any{},
+	}
+	if res := postJSON(t, ts, "/api/primitives", tech); res.StatusCode != 201 {
+		t.Fatalf("create technique: %d (%s)", res.StatusCode, readAll(t, res))
+	}
+
+	req, _ := http.NewRequest("DELETE", ts.URL+"/api/primitives/ref-target-tool", nil)
 	res, err := httpClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

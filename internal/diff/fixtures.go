@@ -136,7 +136,7 @@ func (pr *FixturePR) NormalizeHashes() error {
 		}
 	}
 	for i := range pr.Proposed.AddedBundles {
-		h, err := hash.Compute(pr.Proposed.AddedBundles[i].Doc)
+		h, err := hash.ComputeBundle(pr.Proposed.AddedBundles[i].Doc)
 		if err != nil {
 			return err
 		}

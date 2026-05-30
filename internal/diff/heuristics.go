@@ -15,14 +15,15 @@ func heuristicAliasCollision(sc *commonsgit.SemanticChange, corpus []indexer.Ite
 	if sc.After == nil {
 		return nil
 	}
-	resolve := indexer.BuildResolveIndexes(corpus)
+	// Build resolve over the existing primitive corpus only (categories are not
+	// the subject of a primitive-alias collision check).
+	resolve := indexer.BuildResolve(nil, corpus)
 	props, _ := sc.After["properties"].(map[string]any)
 	names, _ := props["names"].(map[string]any)
 	if names == nil {
 		return nil
 	}
 	mySlug, _ := sc.After["slug"].(string)
-	myHash, _ := sc.After["content_hash"].(string)
 
 	collisions := map[string][]string{} // language → list of colliding keys
 	for lang, raw := range names {
@@ -30,7 +31,7 @@ func heuristicAliasCollision(sc *commonsgit.SemanticChange, corpus []indexer.Ite
 		if !ok {
 			continue
 		}
-		langMap, ok := resolve[lang]
+		langFile, ok := resolve[lang]
 		if !ok {
 			continue
 		}
@@ -40,12 +41,12 @@ func heuristicAliasCollision(sc *commonsgit.SemanticChange, corpus []indexer.Ite
 				continue
 			}
 			key := indexer.NormalizeKey(s)
-			existing, ok := langMap[key]
+			entries, ok := langFile.Entries[key]
 			if !ok {
 				continue
 			}
-			// Don't flag self.
-			if matchesSelf(existing, mySlug, myHash) {
+			// Don't flag self (the entry whose ref path carries this slug).
+			if entriesMatchSelf(entries, mySlug) {
 				continue
 			}
 			collisions[lang] = append(collisions[lang], s)
@@ -85,27 +86,19 @@ func heuristicAliasCollision(sc *commonsgit.SemanticChange, corpus []indexer.Ite
 	}}
 }
 
-func matchesSelf(existing any, mySlug, myHash string) bool {
-	if m, ok := existing.(map[string]any); ok {
-		h, _ := m["hash"].(string)
-		p, _ := m["path"].(string)
-		if h == myHash {
-			return true
-		}
-		if strings.Contains(p, "/"+mySlug+".json") {
-			return true
-		}
+// entriesMatchSelf reports whether the resolve entry list contains only the
+// primitive being authored (matched by its slug appearing in the entry ref
+// path), in which case the "collision" is the primitive resolving to itself.
+func entriesMatchSelf(entries []indexer.Entry, mySlug string) bool {
+	if len(entries) == 0 {
 		return false
 	}
-	// Array case — collision list. Check if any entry matches self.
-	if arr, ok := existing.([]any); ok {
-		for _, raw := range arr {
-			if matchesSelf(raw, mySlug, myHash) {
-				return true
-			}
+	for _, e := range entries {
+		if !strings.Contains(e.Ref, "/"+mySlug+".json") {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // heuristicKindMismatch flags suspected mis-classifications. A primitive of

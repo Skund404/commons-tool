@@ -101,6 +101,13 @@ func projectPrimitiveFromUI(in uiProjectionInput) (map[string]any, []ResolutionE
 		props["names"] = specNames
 	}
 
+	// taxonomy: a category-membership id folds into properties.taxonomy
+	// (addendum §A.3). This is how a primitive declares its spot in the authored
+	// category skeleton; it replaces the old specializes-relationship-as-taxonomy.
+	if tax, _ := ui["taxonomy"].(string); tax != "" {
+		props["taxonomy"] = tax
+	}
+
 	// Kind-specific domain fields fold into properties.
 	if domain, ok := ui["domain"].(map[string]any); ok {
 		switch kind {
@@ -136,7 +143,11 @@ func projectPrimitiveFromUI(in uiProjectionInput) (map[string]any, []ResolutionE
 	}
 
 	// ─── relationships block ────────────────────────────────────────
-	var rels []any
+	// Initialize empty (not nil): a nil []any hashes in-memory as `[]` but
+	// json.Marshal writes it as `null`, so a recompute from disk would diverge
+	// from the stored content_hash. Keeping it `[]any{}` makes the empty case
+	// serialize as `[]` consistently across the hash and the on-disk file.
+	rels := []any{}
 	var errs []ResolutionError
 
 	emitRel := func(t string, slugTarget string, i int) {
@@ -183,7 +194,7 @@ func projectPrimitiveFromUI(in uiProjectionInput) (map[string]any, []ResolutionE
 	}
 
 	// ─── tags ───────────────────────────────────────────────────────
-	var tags []any
+	tags := []any{} // empty (not nil) for hash/disk consistency — see relationships above
 	if rawTags, ok := ui["tags"].([]any); ok {
 		for _, v := range rawTags {
 			if s, ok := v.(string); ok && s != "" {

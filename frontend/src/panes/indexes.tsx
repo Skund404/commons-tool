@@ -2,90 +2,62 @@ import { useMemo, useState, type ReactNode } from "react";
 import {
   Button,
   Card,
-  Hash,
   I,
-  KIND_ICON,
-  KIND_LABEL,
   Segmented,
   SeverityChip,
   SeverityDot,
   Tabs,
   Toolbar,
 } from "@/components";
-import { usePrimitives, useRegenerateIndexes } from "@/api/hooks";
-import type { Primitive, PrimitiveKind } from "@/types/primitives";
+import {
+  useRegenerateIndexes,
+  useResolveIndexes,
+  useTaxonomyIndexes,
+  type TaxNode,
+} from "@/api/hooks";
 
 type LangKey = "en" | "de" | "fr";
 type IndexTab = "resolve" | "taxonomy";
 type TaxView = "tree" | "json";
 
-interface TaxTree {
-  [slug: string]: TaxTree;
-}
-
-const TAX_KINDS: PrimitiveKind[] = ["tool", "material", "technique", "workflow"];
-
+// PaneIndex inspects the real generated indexes (addendum §A.5/§A.7): the
+// cross-lingual resolve map and the category taxonomy tree, read from
+// /api/indexes/resolve + /api/indexes/taxonomy. Read-only; the Regenerate
+// action rebuilds them from the corpus.
 export function PaneIndex() {
   const [tab, setTab] = useState<IndexTab>("resolve");
   const [lang, setLang] = useState<LangKey>("en");
   const [taxView, setTaxView] = useState<TaxView>("tree");
-  const { data: PRIMS = [] } = usePrimitives();
+  const { data: RESOLVE } = useResolveIndexes();
+  const { data: TAX } = useTaxonomyIndexes();
   const regen = useRegenerateIndexes();
 
+  const resolveFile = RESOLVE?.[lang];
   const rows = useMemo(() => {
     const out: {
       key: string;
-      kind: PrimitiveKind;
-      slug: string;
-      hash: string;
+      ref: string;
+      cls: string;
+      kind: string | null;
+      name: string;
       canon: boolean;
     }[] = [];
-    PRIMS.forEach((p) => {
-      const e = p.names[lang];
-      if (!e) return;
-      if (e.canonical) {
-        out.push({ key: e.canonical, kind: p.kind, slug: p.id, hash: p.hash, canon: true });
+    if (!resolveFile) return out;
+    for (const [key, entries] of Object.entries(resolveFile.entries)) {
+      for (const e of entries) {
+        out.push({ key, ref: e.ref, cls: e.class, kind: e.kind, name: e.name, canon: e.canonical });
       }
-      e.aliases.forEach((a) => {
-        out.push({ key: a, kind: p.kind, slug: p.id, hash: p.hash, canon: false });
-      });
-    });
-    out.sort((a, b) => a.key.localeCompare(b.key));
-    return out;
-  }, [lang, PRIMS]);
-
-  const taxTree = useMemo<Record<string, TaxTree>>(() => {
-    const t: Record<string, TaxTree> = {};
-    const byParent: Record<string, Primitive[]> = {};
-    PRIMS.forEach((p) => {
-      const parent = p.specializes ?? "__root__";
-      (byParent[parent] = byParent[parent] ?? []).push(p);
-    });
-    function build(slug: string): TaxTree {
-      const node: TaxTree = {};
-      (byParent[slug] ?? []).forEach((c) => {
-        node[c.id] = build(c.id);
-      });
-      return node;
     }
-    TAX_KINDS.forEach((k) => {
-      const roots = (byParent.__root__ ?? []).filter((p) => p.kind === k);
-      const node: TaxTree = {};
-      roots.forEach((r) => {
-        node[r.id] = build(r.id);
-      });
-      t[k] = node;
-    });
-    return t;
-  }, [PRIMS]);
+    return out; // keys already sorted by the generator
+  }, [resolveFile]);
 
-  const entryCount = (function count(o: TaxTree): number {
+  const taxFile = TAX?.[lang];
+  const taxRoots = taxFile ? Object.values(taxFile.tree) : [];
+  const nodeCount = (function count(ns: TaxNode[]): number {
     let n = 0;
-    for (const k in o) {
-      n += 1 + count(o[k]);
-    }
+    for (const node of ns) n += 1 + count(node.children);
     return n;
-  })(taxTree as TaxTree);
+  })(taxRoots);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -149,7 +121,7 @@ export function PaneIndex() {
           />
         )}
         <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
-          {tab === "resolve" ? `${rows.length} entries` : `${entryCount} nodes`}
+          {tab === "resolve" ? `${rows.length} entries` : `${nodeCount} nodes`}
         </span>
       </div>
 
@@ -157,18 +129,12 @@ export function PaneIndex() {
         <div style={{ flex: 1, overflowY: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
             <thead>
-              <tr
-                style={{
-                  position: "sticky",
-                  top: 0,
-                  background: "var(--surface-2)",
-                  textAlign: "left",
-                }}
-              >
+              <tr style={{ position: "sticky", top: 0, background: "var(--surface-2)", textAlign: "left" }}>
                 <Th>Key</Th>
+                <Th>Class</Th>
                 <Th>Kind</Th>
-                <Th>Slug</Th>
-                <Th>Hash</Th>
+                <Th>Name</Th>
+                <Th>Ref</Th>
                 <Th>Canonical</Th>
               </tr>
             </thead>
@@ -176,23 +142,19 @@ export function PaneIndex() {
               {rows.map((r, i) => (
                 <tr key={i} style={{ borderBottom: "1px solid var(--line)" }}>
                   <Td>
-                    <span
-                      className={r.canon ? "" : "mono"}
-                      style={{ color: r.canon ? "var(--ink)" : "var(--ink-2)" }}
-                    >
+                    <span className={r.canon ? "" : "mono"} style={{ color: r.canon ? "var(--ink)" : "var(--ink-2)" }}>
                       {r.key}
                     </span>
                   </Td>
                   <Td>
-                    <span style={{ color: "var(--ink-3)", fontSize: 11 }}>
-                      {KIND_LABEL[r.kind]}
-                    </span>
+                    <span style={{ color: "var(--ink-3)", fontSize: 11 }}>{r.cls}</span>
                   </Td>
                   <Td>
-                    <span className="mono">{r.slug}</span>
+                    <span style={{ color: "var(--ink-3)", fontSize: 11 }}>{r.kind ?? "—"}</span>
                   </Td>
+                  <Td>{r.name}</Td>
                   <Td>
-                    <Hash value={r.hash} />
+                    <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>{r.ref}</span>
                   </Td>
                   <Td>
                     {r.canon ? (
@@ -212,9 +174,9 @@ export function PaneIndex() {
         <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
           {taxView === "tree" ? (
             <Card padded={false} style={{ maxWidth: 820, margin: "0 auto" }}>
-              <div style={{ padding: "10px 4px" }}>
-                {Object.entries(taxTree).map(([kind, roots]) => (
-                  <TaxKindBlock key={kind} kind={kind as PrimitiveKind} roots={roots} />
+              <div style={{ padding: "10px 8px" }}>
+                {taxRoots.map((r) => (
+                  <TaxRow key={r.id} node={r} depth={0} />
                 ))}
               </div>
             </Card>
@@ -234,7 +196,7 @@ export function PaneIndex() {
                   borderRadius: 6,
                 }}
               >
-                {JSON.stringify(taxTree, null, 2)}
+                {JSON.stringify(taxFile ?? {}, null, 2)}
               </pre>
             </Card>
           )}
@@ -250,8 +212,8 @@ export function PaneIndex() {
               gap: 6,
             }}
           >
-            <SeverityDot sev="approve" /> Read-only view. Locally regenerated tree matches the
-            committed <span className="mono">indexes/taxonomy/{lang}.json</span>.
+            <SeverityDot sev="approve" /> Read-only view of{" "}
+            <span className="mono">indexes/taxonomy/{lang}.json</span>.
           </div>
         </div>
       )}
@@ -259,70 +221,12 @@ export function PaneIndex() {
   );
 }
 
-function TaxKindBlock({ kind, roots }: { kind: PrimitiveKind; roots: TaxTree }) {
-  const Ico = KIND_ICON[kind];
-  const rootKeys = Object.keys(roots);
-  if (rootKeys.length === 0) return null;
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "6px 12px",
-          borderBottom: "1px solid var(--line)",
-          background: "var(--surface-2)",
-          fontSize: 11,
-          color: "var(--ink-3)",
-          textTransform: "uppercase",
-          letterSpacing: 0.6,
-          fontWeight: 600,
-        }}
-      >
-        <Ico size={12} /> {KIND_LABEL[kind]} ·{" "}
-        <span className="mono" style={{ textTransform: "none" }}>
-          {rootKeys.length} root{rootKeys.length > 1 ? "s" : ""}
-        </span>
-      </div>
-      <div style={{ padding: "6px 8px" }}>
-        {rootKeys.map((slug) => (
-          <TaxRow key={slug} slug={slug} kids={roots[slug]} depth={0} kind={kind} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TaxRow({
-  slug,
-  kids,
-  depth,
-  kind,
-}: {
-  slug: string;
-  kids: TaxTree;
-  depth: number;
-  kind: PrimitiveKind;
-}) {
+function TaxRow({ node, depth }: { node: TaxNode; depth: number }) {
   const [open, setOpen] = useState(true);
-  const { data: prims = [] } = usePrimitives();
-  const p = prims.find((x: Primitive) => x.id === slug);
-  const childKeys = Object.keys(kids);
-  const hasKids = childKeys.length > 0;
-  const Ico = KIND_ICON[(p?.kind ?? kind) as PrimitiveKind];
+  const hasKids = node.children.length > 0 || node.members.length > 0;
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "3px 6px",
-          borderRadius: 4,
-          marginLeft: depth * 18,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 6px", marginLeft: depth * 18 }}>
         {hasKids ? (
           <button
             onClick={() => setOpen((o) => !o)}
@@ -342,19 +246,38 @@ function TaxRow({
         ) : (
           <span style={{ width: 11, display: "inline-block" }} />
         )}
-        <Ico size={12} style={{ color: "var(--ink-3)" }} />
-        <span className="mono" style={{ fontSize: 12, color: "var(--ink)" }}>
-          {slug}
-        </span>
-        {hasKids && (
-          <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>
-            {childKeys.length}
-          </span>
+        <I.Tree size={12} style={{ color: "var(--ink-3)" }} />
+        <span style={{ fontSize: 12.5 }}>{node.name}</span>
+        <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>{node.id}</span>
+        {node.members.length > 0 && (
+          <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>· {node.members.length}m</span>
         )}
-        <span style={{ flex: 1 }} />
-        {p && <Hash value={p.hash} mute />}
       </div>
-      {open && childKeys.map((c) => <TaxRow key={c} slug={c} kids={kids[c]} depth={depth + 1} kind={kind} />)}
+      {open && (
+        <>
+          {node.members.map((m) => (
+            <div
+              key={m.ref}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "2px 6px",
+                marginLeft: (depth + 1) * 18,
+                fontSize: 12,
+                color: "var(--ink-2)",
+              }}
+            >
+              <I.Tag size={11} style={{ color: "var(--ink-4)" }} />
+              <span>{m.name}</span>
+              <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>{m.slug}</span>
+            </div>
+          ))}
+          {node.children.map((c) => (
+            <TaxRow key={c.id} node={c} depth={depth + 1} />
+          ))}
+        </>
+      )}
     </div>
   );
 }

@@ -39,8 +39,10 @@ commons intake-incoming --mock DIR [--apply] # explode contributions/incoming/ s
 `contributions/incoming/` — a dependency closure (array of primitives) or a
 bundle plus its members — writes each primitive to `primitives/<kind>s/<slug>.json`,
 maps HideSync's authoring-shape bundle to the canonical `schema.Bundle` shape
-(preserving per-item notes), rebuilds the resolve/taxonomy indexes, and removes
-the staged file. `--apply` performs the writes; the default is a dry-run preview.
+(localizing per-item notes; carrying `state` + append-only `successors`),
+rebuilds the indexes (manifest + cross-lingual resolve + category-tree
+taxonomy), and removes the staged file. `--apply` performs the writes; the
+default is a dry-run preview.
 
 After building, run `./dist/commons` (Linux) or `dist\commons.exe` (Windows). It binds the first available port from 8430 upward and opens your default browser.
 
@@ -58,7 +60,7 @@ The frontend talks to the backend exclusively over HTTP on `localhost`. There is
 ## Specifications
 
 - [OPG-L 0.6 Formal Specification](../Rillmark/OPG-L/Spec%20Sheets/OPG-L_Formal_Specification_0.6.md) — primitive shape, lifecycle, hashing, linearity, append-only discipline
-- [Proto-Commons Record Format 0.1](../Rillmark/_Processes/proto-commons-index-spec.md) — index format, bundles, federation
+- [OPG-L 0.6 Index & Bundle Data-Format Addendum 1.0](../Rillmark/_Processes/opg-l-index-bundle-addendum.md) — the **index** (an authored category skeleton + derived cross-lingual *resolve* and category-tree *taxonomy* projections) and the **bundle** (a hash-pinned assortment with an open/closed lifecycle and append-only `successors`). Supersedes the Proto-Commons Record Format 0.3.
 - This tool is the reference implementation for both.
 
 ## License
@@ -73,7 +75,7 @@ commons-tool/
   internal/
     hash/              RFC-8785 canonical JSON + SHA-256
     schema/            OPG-L 0.6 strict validator + bundle validator
-    indexer/           resolve + taxonomy index generator (Go port of mock/scripts/generate-indexes.py)
+    indexer/           index generator — category skeleton → manifest + cross-lingual resolve + category-tree taxonomy (Go port of mock/scripts/generate-indexes.py; byte-identical)
     git/               go-git wrappers + semantic diff parser
     github/            gh CLI + go-github SDK for PR ops
     federation/        multi-root reader

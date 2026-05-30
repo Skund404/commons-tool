@@ -70,7 +70,7 @@ func (s *Server) writePrimitivePipeline(ui map[string]any, op writeOp, expectedS
 	}
 
 	// 2. Slug collision / existence.
-	existing, existingIdx := findBySlug(corpus, slug)
+	existing, _ := findBySlug(corpus, slug)
 	if op == opCreate && existing != nil {
 		return nil, http.StatusConflict, fmt.Errorf("slug %q already exists at %s", slug, existing.Path)
 	}
@@ -95,23 +95,18 @@ func (s *Server) writePrimitivePipeline(ui map[string]any, op writeOp, expectedS
 		return nil, http.StatusBadRequest, formatSchemaErrors(errs)
 	}
 
-	// 5. Cycle detection on the would-be-new corpus.
-	overlay := corpusWithReplacement(corpus, existingIdx, indexer.Item{
-		Path: posixJoin(kindPathOrPanic(kind), slug+".json"),
-		Doc:  specDoc,
-	})
-	if cycErrs := indexer.DetectCycles(overlay); len(cycErrs) > 0 {
-		// Filter "not in corpus" entries; those are dangling refs that the
-		// resolver would have already caught above.
-		var realCycles []string
-		for _, e := range cycErrs {
-			if strings.Contains(e, "cycle") {
-				realCycles = append(realCycles, e)
-			}
-		}
-		if len(realCycles) > 0 {
-			return nil, http.StatusBadRequest, fmt.Errorf("specializes cycle introduced: %s", strings.Join(realCycles, "; "))
-		}
+	// 5. Taxonomy membership: when the primitive declares properties.taxonomy it
+	// must resolve to a known category id (the addendum moved the taxonomy off
+	// primitive `specializes` onto an authored category skeleton). Only the
+	// primitive being written is checked — pre-existing corpus state isn't this
+	// write's responsibility.
+	cats, err := indexer.LoadCategories(s.CorpusRoot)
+	if err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("load categories: %w", err)
+	}
+	written := []indexer.Item{{Path: posixJoin(kindPathOrPanic(kind), slug+".json"), Doc: specDoc}}
+	if memErrs := indexer.ValidateMembership(cats, written); len(memErrs) > 0 {
+		return nil, http.StatusBadRequest, fmt.Errorf("taxonomy membership: %s", strings.Join(memErrs, "; "))
 	}
 
 	// 6. Atomic write.
@@ -184,30 +179,10 @@ func findBySlug(corpus []indexer.Item, slug string) (*indexer.Item, int) {
 	return nil, -1
 }
 
-// corpusWithReplacement returns a copy of corpus with the item at idx swapped
-// for replacement. idx<0 appends.
-func corpusWithReplacement(corpus []indexer.Item, idx int, replacement indexer.Item) []indexer.Item {
-	out := make([]indexer.Item, 0, len(corpus)+1)
-	if idx < 0 {
-		out = append(out, corpus...)
-		out = append(out, replacement)
-		return out
-	}
-	out = append(out, corpus[:idx]...)
-	out = append(out, replacement)
-	out = append(out, corpus[idx+1:]...)
-	return out
-}
-
-// regenAllIndexes rebuilds resolve + taxonomy indexes for every language and
-// writes them under indexes/.
+// regenAllIndexes rebuilds manifest + resolve + taxonomy indexes for the corpus
+// and writes them under indexes/ (delegates to the indexer's high-level entry).
 func regenAllIndexes(corpusRoot string, corpus []indexer.Item) error {
-	resolve := indexer.BuildResolveIndexes(corpus)
-	if err := indexer.WriteIndexes(filepath.Join(corpusRoot, "indexes", "resolve"), resolve); err != nil {
-		return err
-	}
-	tax := indexer.BuildTaxonomyIndexes(corpus)
-	return indexer.WriteIndexes(filepath.Join(corpusRoot, "indexes", "taxonomy"), tax)
+	return indexer.Regenerate(corpusRoot, corpus)
 }
 
 // bundleDanglingWarnings returns one warning per bundle item whose pinned hash

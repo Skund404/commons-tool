@@ -41,14 +41,17 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	bundles, _ := readBundles(s.CorpusRoot)
 	prs, _ := commonsdiff.LoadFixturePRs()
 
-	cycErrs := indexer.DetectCycles(corpus)
+	cats, _ := indexer.LoadCategories(s.CorpusRoot)
+	skelErrs := indexer.ValidateSkeleton(cats)
+	skelErrs = append(skelErrs, indexer.ValidateMembership(cats, corpus)...)
 	out := map[string]any{
 		"corpus_root":    s.CorpusRoot,
 		"primitives":     len(corpus),
+		"categories":     len(cats),
 		"bundles":        len(bundles),
 		"open_prs":       len(prs),
-		"cycle_errors":   cycErrs,
-		"validator_ok":   len(cycErrs) == 0,
+		"skeleton_errors": skelErrs,
+		"validator_ok":   len(skelErrs) == 0,
 		"last_validated": time.Now().UTC().Format(time.RFC3339),
 	}
 	if s.State != nil {
@@ -99,7 +102,12 @@ func (s *Server) handleResolveIndexes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, indexer.BuildResolveIndexes(corpus))
+	cats, err := indexer.LoadCategories(s.CorpusRoot)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, indexer.BuildResolve(cats, corpus))
 }
 
 func (s *Server) handleTaxonomyIndexes(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +116,13 @@ func (s *Server) handleTaxonomyIndexes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, indexer.BuildTaxonomyIndexes(corpus))
+	cats, err := indexer.LoadCategories(s.CorpusRoot)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	langs := indexer.ObservedLanguages(cats, corpus)
+	writeJSON(w, 200, indexer.BuildTaxonomy(cats, corpus, langs))
 }
 
 func (s *Server) handleRegenIndexes(w http.ResponseWriter, r *http.Request) {
@@ -117,20 +131,15 @@ func (s *Server) handleRegenIndexes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error())
 		return
 	}
-	resolveIdx := indexer.BuildResolveIndexes(corpus)
-	taxIdx := indexer.BuildTaxonomyIndexes(corpus)
-	if err := indexer.WriteIndexes(filepath.Join(s.CorpusRoot, "indexes", "resolve"), resolveIdx); err != nil {
+	if err := indexer.Regenerate(s.CorpusRoot, corpus); err != nil {
 		writeError(w, 500, err.Error())
 		return
 	}
-	if err := indexer.WriteIndexes(filepath.Join(s.CorpusRoot, "indexes", "taxonomy"), taxIdx); err != nil {
-		writeError(w, 500, err.Error())
-		return
-	}
+	cats, _ := indexer.LoadCategories(s.CorpusRoot)
+	langs := indexer.ObservedLanguages(cats, corpus)
 	writeJSON(w, 200, map[string]any{
-		"ok":     true,
-		"resolve": map[string]int{"languages": len(resolveIdx)},
-		"taxonomy": map[string]int{"languages": len(taxIdx)},
+		"ok":        true,
+		"languages": langs,
 	})
 }
 

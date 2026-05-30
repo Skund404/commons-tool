@@ -1,26 +1,21 @@
 import { useState } from "react";
-import {
-  Card,
-  Hash,
-  I,
-  KIND_ICON,
-  Segmented,
-  Toolbar,
-} from "@/components";
-import { usePrimitives } from "@/api/hooks";
-import type { Primitive, PrimitiveKind } from "@/types/primitives";
+import { Card, Empty, I, KIND_ICON, Segmented, Toolbar } from "@/components";
+import { useTaxonomyIndexes, type TaxNode } from "@/api/hooks";
+import type { PrimitiveKind } from "@/types/primitives";
 
 type LangKey = "en" | "de" | "fr";
-type KindFilter = "tool" | "material" | "technique";
 
+// PaneTaxonomy renders the generated category taxonomy (addendum §A.7): an
+// authored category skeleton with primitives attached as members. It reads the
+// real derived index (indexes/taxonomy/<lang>.json) rather than reconstructing
+// from primitives — taxonomy is category-native, not a primitive `specializes`
+// chain.
 export function PaneTaxonomy() {
   const [lang, setLang] = useState<LangKey>("en");
-  const [kindFilter, setKindFilter] = useState<KindFilter>("tool");
-  void lang;
-  const { data: PRIMS = [] } = usePrimitives();
-  const roots = PRIMS.filter((p) => p.kind === kindFilter && !p.specializes);
+  const { data: TAX, isLoading } = useTaxonomyIndexes();
 
-  const childrenOf = (slug: string) => PRIMS.filter((p) => p.specializes === slug);
+  const file = TAX?.[lang];
+  const roots = file ? Object.values(file.tree) : [];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -30,65 +25,42 @@ export function PaneTaxonomy() {
             <I.Tree size={16} style={{ color: "var(--ink-2)" }} />
             <span style={{ fontWeight: 600 }}>Taxonomy</span>
             <span style={{ color: "var(--ink-4)", fontSize: 12 }}>
-              · walks `specializes` chains
+              · authored category skeleton + attached members
             </span>
           </>
         }
         right={
-          <>
-            <Segmented<LangKey>
-              value={lang}
-              onChange={setLang}
-              options={["en", "de", "fr"] as LangKey[]}
-            />
-            <Segmented<KindFilter>
-              value={kindFilter}
-              onChange={setKindFilter}
-              options={[
-                { value: "tool", label: "Tool" },
-                { value: "material", label: "Material" },
-                { value: "technique", label: "Technique" },
-              ]}
-            />
-          </>
+          <Segmented<LangKey>
+            value={lang}
+            onChange={setLang}
+            options={["en", "de", "fr"] as LangKey[]}
+          />
         }
       />
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
-        <Card padded={false} style={{ maxWidth: 760, margin: "0 auto" }}>
-          <div style={{ padding: "10px 12px" }}>
-            {roots.map((r) => (
-              <TaxNode key={r.id} p={r} depth={0} childrenOf={childrenOf} />
-            ))}
-          </div>
-        </Card>
-        <div
-          style={{
-            maxWidth: 760,
-            margin: "12px auto 0",
-            fontSize: 11.5,
-            color: "var(--ink-3)",
-            padding: "0 12px",
-          }}
-        >
-          Drag nodes to reparent. Cycles are detected and rejected automatically.
-        </div>
+        {roots.length === 0 ? (
+          <Empty
+            icon={<I.Tree size={20} />}
+            title={isLoading ? "Loading taxonomy…" : "No categories yet"}
+            body="Author categories under indexes/categories/ and tag primitives with properties.taxonomy to populate the tree."
+          />
+        ) : (
+          <Card padded={false} style={{ maxWidth: 760, margin: "0 auto" }}>
+            <div style={{ padding: "10px 12px" }}>
+              {roots.map((r) => (
+                <CategoryNode key={r.id} node={r} depth={0} />
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
 }
 
-function TaxNode({
-  p,
-  depth,
-  childrenOf,
-}: {
-  p: Primitive;
-  depth: number;
-  childrenOf: (slug: string) => Primitive[];
-}) {
+function CategoryNode({ node, depth }: { node: TaxNode; depth: number }) {
   const [open, setOpen] = useState(true);
-  const kids = childrenOf(p.id);
-  const Ico = KIND_ICON[p.kind as PrimitiveKind];
+  const hasChildren = node.children.length > 0 || node.members.length > 0;
   return (
     <div>
       <div
@@ -99,41 +71,72 @@ function TaxNode({
           padding: "5px 8px",
           borderRadius: 4,
           marginLeft: depth * 18,
-          cursor: "pointer",
+          cursor: hasChildren ? "pointer" : "default",
         }}
+        onClick={() => hasChildren && setOpen((o) => !o)}
         onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
         onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
       >
-        {kids.length > 0 ? (
-          <button
-            onClick={() => setOpen((o) => !o)}
+        {hasChildren ? (
+          <span
             style={{
-              background: "transparent",
-              border: 0,
-              padding: 0,
               color: "var(--ink-3)",
-              cursor: "pointer",
               transform: open ? "rotate(90deg)" : "none",
               transition: "transform 120ms",
               display: "inline-flex",
             }}
           >
             <I.ChevRight size={12} />
-          </button>
+          </span>
         ) : (
           <span style={{ width: 12, display: "inline-block" }} />
         )}
-        <Ico size={13} style={{ color: "var(--ink-3)" }} />
-        <span style={{ fontSize: 13 }}>{p.name}</span>
-        {kids.length > 0 && (
-          <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)", marginLeft: 4 }}>
-            {kids.length}
+        <I.Tree size={13} style={{ color: "var(--ink-3)" }} />
+        <span style={{ fontSize: 13 }}>{node.name}</span>
+        <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)", marginLeft: 4 }}>
+          {node.id}
+        </span>
+        {node.members.length > 0 && (
+          <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>
+            · {node.members.length} member{node.members.length > 1 ? "s" : ""}
           </span>
         )}
-        <span style={{ flex: 1 }} />
-        <Hash value={p.hash} mute />
+        {node.related.length > 0 && (
+          <span style={{ fontSize: 10, color: "var(--ink-4)" }}>
+            ↔ {node.related.join(", ")}
+          </span>
+        )}
       </div>
-      {open && kids.map((k) => <TaxNode key={k.id} p={k} depth={depth + 1} childrenOf={childrenOf} />)}
+      {open && (
+        <>
+          {node.members.map((m) => {
+            const Ico = KIND_ICON[m.kind as PrimitiveKind] ?? I.Tag;
+            return (
+              <div
+                key={m.ref}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "3px 8px",
+                  marginLeft: (depth + 1) * 18,
+                  fontSize: 12.5,
+                  color: "var(--ink-2)",
+                }}
+              >
+                <Ico size={12} style={{ color: "var(--ink-4)" }} />
+                <span>{m.name}</span>
+                <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>
+                  {m.slug}
+                </span>
+              </div>
+            );
+          })}
+          {node.children.map((c) => (
+            <CategoryNode key={c.id} node={c} depth={depth + 1} />
+          ))}
+        </>
+      )}
     </div>
   );
 }

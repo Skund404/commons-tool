@@ -4,47 +4,70 @@ import (
 	"fmt"
 )
 
-// Bundle is the on-disk shape of a Proto-Commons bundle per
-// _Processes/proto-commons-index-spec.md §5.
+// Bundle is the on-disk shape of a Proto-Commons bundle per the OPG-L 0.6 Index
+// & Bundle Data-Format Addendum 1.0 (§B).
 type Bundle struct {
-	RecordClass string             `json:"record_class"`
-	Slug        string             `json:"slug"`
-	Emitter     string             `json:"emitter"`
-	ContentHash string             `json:"content_hash"`
-	License     string             `json:"license"`
-	Lineage     *Lineage           `json:"lineage,omitempty"`
-	Name        map[string]string  `json:"name,omitempty"`
-	Description map[string]string  `json:"description,omitempty"`
-	Items       []BundleItem       `json:"items"`
+	FormatVersion string            `json:"format_version"`
+	RecordClass   string            `json:"record_class"`
+	Slug          string            `json:"slug"`            // living identity (open)
+	State         string            `json:"state"`           // "open" | "closed"
+	Emitter       string            `json:"emitter"`
+	License       string            `json:"license"`
+	Lineage       *Lineage          `json:"lineage,omitempty"`
+	Name          map[string]string `json:"name,omitempty"`
+	Description   map[string]string `json:"description,omitempty"`
+	Items         []BundleItem      `json:"items"`
+	Successors    []Successor       `json:"successors,omitempty"`
+	ContentHash   string            `json:"content_hash"` // frozen identity (closed); excludes successors
+	Modified      string            `json:"modified,omitempty"`
 }
 
 // BundleItem references either a primitive or a nested bundle.
 //
-// Note is an OPTIONAL free-text annotation carried from the authoring shape
-// (HideSync's per-item note) so it survives canonical intake rather than being
-// dropped — see OPG-L Handbook DEFERRED-SPEC-QUESTIONS Q-005. Descriptive only;
-// not a resolver contract.
+// Note is an OPTIONAL localized ({lang: string}) authored annotation, consistent
+// with name/description (addendum §B.3 — resolved per the 2026-05-30 decision to
+// localize rather than carry a plain string). Tooling-opaque; not a resolver
+// contract.
 type BundleItem struct {
-	RecordClass string `json:"record_class"`
-	Kind        string `json:"kind,omitempty"`
-	Slug        string `json:"slug"`
-	Hash        string `json:"hash"`
-	Role        string `json:"role"`
-	Note        string `json:"note,omitempty"`
+	RecordClass string            `json:"record_class"`
+	Kind        string            `json:"kind,omitempty"`
+	Slug        string            `json:"slug"`
+	Hash        string            `json:"hash"`
+	Role        string            `json:"role"`
+	Note        map[string]string `json:"note,omitempty"`
 }
 
-// ValidBundleRoles — closed set per spec §5.3.
+// Successor is an append-only, hash-excluded forward pointer to a standalone
+// successor bundle (addendum §B.6). It carries no role.
+type Successor struct {
+	Target       string            `json:"target"`                  // successor bundle by slug or hash
+	Note         map[string]string `json:"note,omitempty"`          // localized explanation
+	ChangeImpact string            `json:"change_impact,omitempty"` // OPEN vocabulary
+	Added        string            `json:"added,omitempty"`
+}
+
+// ValidBundleRoles — closed set per addendum §B.3.
 var ValidBundleRoles = map[string]bool{
 	"required": true, "recommended": true, "optional": true,
 }
 
-// ValidateBundle runs all strict gates on a bundle record.
+// ValidBundleStates — closed set per addendum §B.5.
+var ValidBundleStates = map[string]bool{
+	"open": true, "closed": true,
+}
+
+// ValidateBundle runs all strict gates on a bundle record. Append-only checking
+// of successors vs. a prior published state is stateful and lives at the
+// intake/diff layer; this validator covers the structural rules.
 func ValidateBundle(b *Bundle) []error {
 	var errs []error
 	add := func(format string, args ...any) {
 		errs = append(errs, fmt.Errorf(format, args...))
 	}
 
+	if b.FormatVersion == "" {
+		add("format_version: required")
+	}
 	if b.RecordClass != "bundle" {
 		add("record_class: must be \"bundle\", got %q", b.RecordClass)
 	}
@@ -52,6 +75,9 @@ func ValidateBundle(b *Bundle) []error {
 		add("slug: required")
 	} else if !slugRE.MatchString(b.Slug) {
 		add("slug: %q must be kebab-case", b.Slug)
+	}
+	if !ValidBundleStates[b.State] {
+		add("state: %q not in {open, closed}", b.State)
 	}
 	if b.Emitter == "" {
 		add("emitter: required")
@@ -88,6 +114,12 @@ func ValidateBundle(b *Bundle) []error {
 		}
 		if !ValidBundleRoles[it.Role] {
 			add("items[%d].role: %q not in {required, recommended, optional}", i, it.Role)
+		}
+	}
+
+	for i, sc := range b.Successors {
+		if sc.Target == "" {
+			add("successors[%d].target: required", i)
 		}
 	}
 

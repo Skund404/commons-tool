@@ -550,6 +550,19 @@ export function PaneEditor({ slug, fresh, fork, onFork, onDelete, go }: PaneEdit
               <Field label="Tags">
                 <TagInput value={p.tags} onChange={(tags) => set({ tags })} />
               </Field>
+              <Field
+                label="Category"
+                hint="Category id from the taxonomy skeleton (properties.taxonomy). Joins this primitive into the category tree — must match an authored category."
+              >
+                <Input
+                  value={p.taxonomy ?? ""}
+                  onChange={(e) =>
+                    set({ taxonomy: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })
+                  }
+                  leadingIcon={<I.Tree size={12} />}
+                  placeholder="e.g. cutting-knife"
+                />
+              </Field>
             </SectionBlock>
 
             <SectionBlock

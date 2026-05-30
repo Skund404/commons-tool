@@ -127,6 +127,7 @@ func projectPrimitiveToUI(it indexer.Item) map[string]any {
 		"tags":        tags,
 		"names":       uiNames,
 		"specializes": specializes,
+		"taxonomy":    props["taxonomy"], // category-membership id (addendum §A.3); may be nil
 		"rel":         uiRel,
 		"domain":      domain,
 	}
@@ -199,6 +200,7 @@ func projectBundleToUI(doc map[string]any) map[string]any {
 				"kind": k,
 				"slug": it["slug"],
 				"role": it["role"],
+				"note": it["note"], // localized {lang: string} or nil
 			})
 		}
 	}
@@ -207,14 +209,25 @@ func projectBundleToUI(doc map[string]any) map[string]any {
 	if lic == "" {
 		lic = "CC-BY-4.0"
 	}
-	return map[string]any{
-		"id":      doc["slug"],
-		"slug":    doc["slug"],
-		"hash":    doc["content_hash"],
-		"emitter": doc["emitter"],
-		"license": lic,
-		"state":   state,
-		"names":   uiNames,
-		"items":   uiItems,
+	// lifecycle is the bundle's open/closed state (addendum §B.5), distinct from
+	// the UI-lifecycle `state` (published/validated/draft). Default open.
+	lifecycle, _ := doc["state"].(string)
+	if lifecycle != "open" && lifecycle != "closed" {
+		lifecycle = "open"
 	}
+	out := map[string]any{
+		"id":         doc["slug"],
+		"slug":       doc["slug"],
+		"hash":       doc["content_hash"],
+		"emitter":    doc["emitter"],
+		"license":    lic,
+		"state":      state,
+		"lifecycle":  lifecycle,
+		"names":      uiNames,
+		"items":      uiItems,
+	}
+	if succ, ok := doc["successors"].([]any); ok && len(succ) > 0 {
+		out["successors"] = succ
+	}
+	return out
 }
