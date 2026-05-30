@@ -43,28 +43,21 @@ against effort at any given moment.
   `commons-{linux,windows}-amd64` archives + `SHA256SUMS.txt` to a GitHub
   Release, so contributors can grab a binary without a toolchain.
 
----
+- **§9.9 cross-impl normalization gate** (active): commons-tool CI runs the
+  Python reference (`proto-commons@test-corpus/scripts/test_normalize.py`)
+  against a byte-identical vectors fixture, alongside the Go gate, so
+  `str.casefold()`/`unicodedata` can't silently diverge from
+  `x/text/cases.Fold`.
 
-## Short term
-
-### Live `gh pr diff` → SemanticDiff
-
-`internal/diff/recommender.go` currently runs on synthetic fixture PRs
-(`internal/diff/fixtures/`). Real PRs land in
-[`Skund404/proto-commons`](https://github.com/Skund404/proto-commons) once
-the suggestion intake bootstraps. To exercise the recommender on those:
-
-1. `internal/git/patch.go` — parse the unified-diff text returned by
-   `gh pr diff <num>` into the same `SemanticDiff` shape `DiffWorkingTree`
-   produces.
-2. `/api/diff?source=pr&num=<n>` switches from fixture lookup to the live
-   parser when `s.GitHub` is wired and the PR is not in the fixture set.
-3. `/api/prs` merges live PRs with fixture PRs (already wired) — once live
-   parsing exists, the recommender output will flow for real contributions
-   too.
-
-Scope: ~300 LOC for the patch parser, no UI changes (the Review pane already
-consumes `SemanticDiff` agnostic to source).
+- **Live PR review** (`/api/diff?source=pr`, `/api/prs`, `/api/prs/{n}`): a
+  non-fixture PR is reviewed live. Primary path fetches the PR head ref and
+  diffs git objects (`liveDiffFromPR` → `DiffRefs`); when the corpus dir isn't
+  a local git checkout, it falls back to parsing `gh pr diff` text
+  (`internal/git/patch.go` → `ParseUnifiedDiff`: full analysis for added/deleted
+  records, file-level for modified). The fixture PRs (`internal/diff/fixtures/`)
+  remain for offline/demo. *(The original plan was the text parser alone; the
+  git-object path was added as the better primary and is strictly more accurate
+  on modified records — the text path is the no-checkout fallback.)*
 
 ---
 
