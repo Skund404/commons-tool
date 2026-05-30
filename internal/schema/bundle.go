@@ -19,12 +19,18 @@ type Bundle struct {
 }
 
 // BundleItem references either a primitive or a nested bundle.
+//
+// Note is an OPTIONAL free-text annotation carried from the authoring shape
+// (HideSync's per-item note) so it survives canonical intake rather than being
+// dropped — see OPG-L Handbook DEFERRED-SPEC-QUESTIONS Q-005. Descriptive only;
+// not a resolver contract.
 type BundleItem struct {
 	RecordClass string `json:"record_class"`
 	Kind        string `json:"kind,omitempty"`
 	Slug        string `json:"slug"`
 	Hash        string `json:"hash"`
 	Role        string `json:"role"`
+	Note        string `json:"note,omitempty"`
 }
 
 // ValidBundleRoles — closed set per spec §5.3.

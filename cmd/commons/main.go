@@ -1,9 +1,10 @@
 // Command commons is the desktop maintainer tool for the OPG-L Proto-Commons.
 //
 // Subcommands:
-//   commons              start the HTTP server (default) and open a browser
-//   commons verify-mock  validate a mock corpus against the validator + indexer
-//   commons version      print version and exit
+//   commons                 start the HTTP server (default) and open a browser
+//   commons verify-mock     validate a mock corpus against the validator + indexer
+//   commons intake-incoming explode contributions/incoming/ ships into the corpus
+//   commons version         print version and exit
 package main
 
 import (
@@ -16,6 +17,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,6 +36,8 @@ func main() {
 		switch os.Args[1] {
 		case "verify-mock":
 			os.Exit(runVerifyMock(os.Args[2:]))
+		case "intake-incoming":
+			os.Exit(runIntakeIncoming(os.Args[2:]))
 		case "version", "-v", "--version":
 			fmt.Println("commons", version.Version)
 			os.Exit(0)
@@ -53,8 +57,90 @@ Usage:
   commons --port=8430           override default port
   commons --no-browser          skip the auto-open
   commons verify-mock --mock D  validate a mock corpus directory
+  commons intake-incoming --mock D [--file F] [--apply]
+                                explode contributions/incoming/ ships into the corpus
   commons version               print version and exit
 `)
+}
+
+// runIntakeIncoming explodes HideSync "ship" files staged in
+// contributions/incoming/ into the canonical corpus (primitives/<kind>s/ +
+// indexes/bundles/) and rebuilds the resolve/taxonomy indexes. Default is a
+// dry run; --apply performs the writes and removes the staged files.
+func runIntakeIncoming(args []string) int {
+	fs := flag.NewFlagSet("intake-incoming", flag.ContinueOnError)
+	mockDir := fs.String("mock", "../Rillmark/_Proto-Commons/mock", "path to corpus root")
+	file := fs.String("file", "", "a specific contributions/incoming/<name>.json (default: all)")
+	apply := fs.Bool("apply", false, "write canonical files + rebuild indexes (default: dry-run)")
+	emitter := fs.String("emitter", "opg://commons-seed", "emitter stamped on bundles lacking one")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	root, err := filepath.Abs(*mockDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "intake-incoming: cannot resolve mock path:", err)
+		return 2
+	}
+
+	var files []string
+	if *file != "" {
+		f := *file
+		if !filepath.IsAbs(f) {
+			f = filepath.Join(root, "contributions", "incoming", filepath.Base(f))
+		}
+		files = []string{f}
+	} else {
+		entries, _ := os.ReadDir(filepath.Join(root, "contributions", "incoming"))
+		for _, e := range entries {
+			if !e.IsDir() && filepath.Ext(e.Name()) == ".json" {
+				files = append(files, filepath.Join(root, "contributions", "incoming", e.Name()))
+			}
+		}
+	}
+	if len(files) == 0 {
+		fmt.Println("intake-incoming: no contribution files under contributions/incoming/")
+		return 0
+	}
+
+	mode := "DRY-RUN (no writes)"
+	if *apply {
+		mode = "APPLY"
+	}
+	fmt.Printf("intake-incoming [%s] — %d file(s) under %s\n", mode, len(files), root)
+
+	reports, err := api.IntakeIncoming(root, files, *apply, *emitter)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "intake-incoming:", err)
+		return 1
+	}
+
+	hadErr := false
+	for _, r := range reports {
+		fmt.Printf("\n%s\n", filepath.Base(r.File))
+		if len(r.PrimitivesCreated) > 0 {
+			fmt.Printf("  created:  %s\n", strings.Join(r.PrimitivesCreated, ", "))
+		}
+		if len(r.PrimitivesUpdated) > 0 {
+			fmt.Printf("  updated:  %s\n", strings.Join(r.PrimitivesUpdated, ", "))
+		}
+		if len(r.Bundles) > 0 {
+			fmt.Printf("  bundles:  %s\n", strings.Join(r.Bundles, ", "))
+		}
+		for _, w := range r.Warnings {
+			fmt.Printf("  WARN  %s\n", w)
+		}
+		for _, e := range r.Errors {
+			fmt.Printf("  ERROR %s\n", e)
+			hadErr = true
+		}
+	}
+	if !*apply {
+		fmt.Println("\n(dry-run — re-run with --apply to write canonical files + rebuild indexes)")
+	}
+	if hadErr {
+		return 1
+	}
+	return 0
 }
 
 // runVerifyMock loads a mock corpus, runs the validator on every primitive +
