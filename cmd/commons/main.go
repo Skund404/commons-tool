@@ -38,6 +38,8 @@ func main() {
 			os.Exit(runVerifyMock(os.Args[2:]))
 		case "intake-incoming":
 			os.Exit(runIntakeIncoming(os.Args[2:]))
+		case "mint":
+			os.Exit(runMint(os.Args[2:]))
 		case "version", "-v", "--version":
 			fmt.Println("commons", version.Version)
 			os.Exit(0)
@@ -59,6 +61,8 @@ Usage:
   commons verify-mock --mock D  validate a mock corpus directory
   commons intake-incoming --mock D [--file F] [--apply]
                                 explode contributions/incoming/ ships into the corpus
+  commons mint --mock D [--check]
+                                stamp canonical content_hash on every primitive + bundle
   commons version               print version and exit
 `)
 }
