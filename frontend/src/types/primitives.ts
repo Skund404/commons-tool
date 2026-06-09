@@ -135,6 +135,7 @@ export interface Bundle {
   names: LocalizedBundleName;
   items: BundleItem[];
   successors?: BundleSuccessor[];
+  tags?: string[]; // domain-first, e.g. ["leatherwork","kit"]
 }
 
 export interface FederationRoot {

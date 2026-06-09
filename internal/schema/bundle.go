@@ -16,6 +16,7 @@ type Bundle struct {
 	Lineage       *Lineage          `json:"lineage,omitempty"`
 	Name          map[string]string `json:"name,omitempty"`
 	Description   map[string]string `json:"description,omitempty"`
+	Tags          []string          `json:"tags,omitempty"` // domain-first, e.g. ["leatherwork","kit"]
 	Items         []BundleItem      `json:"items"`
 	Successors    []Successor       `json:"successors,omitempty"`
 	ContentHash   string            `json:"content_hash"` // frozen identity (closed); excludes successors

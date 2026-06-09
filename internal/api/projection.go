@@ -229,5 +229,8 @@ func projectBundleToUI(doc map[string]any) map[string]any {
 	if succ, ok := doc["successors"].([]any); ok && len(succ) > 0 {
 		out["successors"] = succ
 	}
+	if tags, ok := doc["tags"].([]any); ok && len(tags) > 0 {
+		out["tags"] = tags
+	}
 	return out
 }
