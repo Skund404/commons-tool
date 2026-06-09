@@ -214,10 +214,20 @@ func runMint(args []string) int {
 		return h, nil
 	}
 
+	// Snapshot stored content_hash for every bundle BEFORE any resolution runs.
+	// resolve() deletes a nested child's content_hash in-place while resolving
+	// its parent (line above), so reading bf.doc["content_hash"] inside the loop
+	// would see "" for any bundle already visited as a child — a false --check
+	// drift report. Capturing up front keeps the comparison honest.
+	storedBundleHash := make(map[string]string, len(bundleSlugs))
+	for _, slug := range bundleSlugs {
+		storedBundleHash[slug] = astr(bundles[slug].doc["content_hash"])
+	}
+
 	bundleChanged := 0
 	for _, slug := range bundleSlugs {
 		bf := bundles[slug]
-		prevStored := astr(bf.doc["content_hash"])
+		prevStored := storedBundleHash[slug]
 		h, err := resolve(slug)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "mint:", err)

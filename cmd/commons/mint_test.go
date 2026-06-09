@@ -131,6 +131,47 @@ func TestMintResolvesNestedBundleHashesInOrder(t *testing.T) {
 	}
 }
 
+// TestMintCheckCleanWhenParentBundleSortsBeforeChild reproduces the --check
+// false-drift bug: when a parent bundle sorts alphabetically BEFORE its nested
+// child, the parent's resolution deletes the child's content_hash in-place, so a
+// naive read of the child's stored hash later in the loop sees "" and reports
+// phantom drift. After stamping, --check must be clean regardless of slug order.
+func TestMintCheckCleanWhenParentBundleSortsBeforeChild(t *testing.T) {
+	root := t.TempDir()
+	writeJSONFile(t, filepath.Join(root, "primitives", "materials", "m.json"), material("m"))
+
+	child := map[string]any{ // "z-child" sorts AFTER the parent
+		"format_version": "1.0", "record_class": "bundle", "slug": "z-child", "state": "open",
+		"emitter": "opg://test", "license": "CC-BY-4.0",
+		"lineage": map[string]any{"provenance_state": "unasserted", "outcome": "unknown"},
+		"name":    map[string]any{"en": "Child"},
+		"items": []any{
+			map[string]any{"record_class": "primitive", "kind": "material", "slug": "m", "hash": zeroHash, "role": "optional"},
+		},
+		"successors": []any{}, "content_hash": zeroHash,
+	}
+	writeJSONFile(t, filepath.Join(root, "indexes", "bundles", "z-child.json"), child)
+
+	parent := map[string]any{ // "a-parent" sorts BEFORE the child
+		"format_version": "1.0", "record_class": "bundle", "slug": "a-parent", "state": "open",
+		"emitter": "opg://test", "license": "CC-BY-4.0",
+		"lineage": map[string]any{"provenance_state": "unasserted", "outcome": "unknown"},
+		"name":    map[string]any{"en": "Parent"},
+		"items": []any{
+			map[string]any{"record_class": "bundle", "slug": "z-child", "hash": zeroHash, "role": "optional"},
+		},
+		"successors": []any{}, "content_hash": zeroHash,
+	}
+	writeJSONFile(t, filepath.Join(root, "indexes", "bundles", "a-parent.json"), parent)
+
+	if code := runMint([]string{"--mock", root}); code != 0 {
+		t.Fatalf("mint write returned %d, want 0", code)
+	}
+	if code := runMint([]string{"--mock", root, "--check"}); code != 0 {
+		t.Fatalf("mint --check returned %d, want 0 (parent-before-child nesting must not report phantom drift)", code)
+	}
+}
+
 // TestMintIncludeScopeLeavesOutsideFilesUntouched verifies that --include gates
 // writes: an out-of-scope record that would otherwise be re-stamped is left on
 // disk unchanged (and reported), while in-scope records are written.
